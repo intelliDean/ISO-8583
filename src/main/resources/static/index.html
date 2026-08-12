@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ISO 8583 Payment Protocol Studio & Simulator</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-container">
+            <div class="logo-area">
+                <div class="logo-icon">💳</div>
+                <div>
+                    <h1>Dean ISO 8583</h1>
+                    <p class="subtitle">Financial Transaction Card Message Parser, Encoder & Host Simulator</p>
+                </div>
+            </div>
+            <div class="status-badge">
+                <span class="pulse-dot"></span> TCP Host Simulator: Port 8583
+            </div>
+        </div>
+    </header>
+
+    <main class="main-container">
+        <!-- Navigation Tabs -->
+        <nav class="tab-nav">
+            <button class="tab-btn active" onclick="switchTab('inspector')">🔍 Message Inspector & Unpacker</button>
+            <button class="tab-btn" onclick="switchTab('builder')">⚡ Message Builder & TCP Simulator</button>
+            <button class="tab-btn" onclick="switchTab('bitmap')">🔲 Visual Bitmap Matrix</button>
+            <button class="tab-btn" onclick="switchTab('guide')">📚 ISO 8583 Masterclass</button>
+        </nav>
+
+        <!-- Tab 1: Inspector -->
+        <section id="tab-inspector" class="tab-content active">
+            <div class="card">
+                <h2>Raw Message Inspector</h2>
+                <p class="card-desc">Paste an ISO 8583 raw string or select a preset to analyze its header, MTI, bitmap, and fields.</p>
+                
+                <div class="preset-bar">
+                    <span class="preset-label">Preset Samples:</span>
+                    <button class="btn btn-secondary btn-sm" onclick="loadPreset('financial')">0200 Financial Request</button>
+                    <button class="btn btn-secondary btn-sm" onclick="loadPreset('echo')">0800 Network Echo Test</button>
+                    <button class="btn btn-secondary btn-sm" onclick="loadPreset('reversal')">0400 Reversal Request</button>
+                </div>
+
+                <div class="form-group">
+                    <label for="rawInput">Raw Payload String:</label>
+                    <textarea id="rawInput" rows="3" placeholder="e.g. 600000000002007020000000C0800016453201558899123400000000000000002550000123TERM0001MERCHANT1234567840"></textarea>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="hasHeader" checked>
+                    <label for="hasHeader">Payload includes 10-char TPDU Transport Header</label>
+                </div>
+
+                <button class="btn btn-primary" onclick="unpackPayload()">Unpack & Disassemble</button>
+            </div>
+
+            <!-- Inspection Results -->
+            <div id="inspectionResult" class="results-grid hidden">
+                <div class="card card-accent">
+                    <h3>Message Summary</h3>
+                    <div class="summary-box">
+                        <div class="summary-item">
+                            <span class="sum-label">TPDU Header</span>
+                            <span class="sum-val code-font" id="resHeader">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="sum-label">MTI Code</span>
+                            <span class="sum-val code-font highlight" id="resMti">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="sum-label">MTI Description</span>
+                            <span class="sum-val" id="resMtiDesc">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="sum-label">Primary Bitmap</span>
+                            <span class="sum-val code-font" id="resPrimaryBitmap">-</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="sum-label">Secondary Bitmap</span>
+                            <span class="sum-val code-font" id="resSecondaryBitmap">None</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Extracted Data Elements (DE)</h3>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Field #</th>
+                                    <th>Field Name</th>
+                                    <th>Encoding Type</th>
+                                    <th>Decoded Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fieldsTableBody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 2: Builder & TCP Simulator -->
+        <section id="tab-builder" class="tab-content">
+            <div class="grid-2col">
+                <div class="card">
+                    <h2>Compose ISO 8583 Message</h2>
+                    <form id="builderForm" onsubmit="event.preventDefault(); packAndSimulate();">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="bHeader">TPDU Header:</label>
+                                <input type="text" id="bHeader" value="6000000000">
+                            </div>
+                            <div class="form-group">
+                                <label for="bMti">MTI Code:</label>
+                                <select id="bMti" onchange="onMtiChange()">
+                                    <option value="0200">0200 - Financial Transaction Request</option>
+                                    <option value="0800">0800 - Network Management Request</option>
+                                    <option value="0100">0100 - Authorization Request</option>
+                                    <option value="0400">0400 - Reversal Request</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div id="builderFields">
+                            <!-- Fields populated by JS based on MTI -->
+                        </div>
+
+                        <div class="button-group">
+                            <button type="button" class="btn btn-secondary" onclick="generatePackedMessage()">Pack Message</button>
+                            <button type="submit" class="btn btn-success">⚡ Pack & Send to TCP Host Simulator</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <h2>Live Payload & TCP Trace</h2>
+                    
+                    <div class="trace-section">
+                        <h4>Generated Packed Stream:</h4>
+                        <div id="packedOutput" class="code-block">Click "Pack Message" or "Send to TCP Simulator" to see output</div>
+                        <div id="bitmapInfo" class="bitmap-summary"></div>
+                    </div>
+
+                    <div class="trace-section">
+                        <h4>TCP Simulator Response:</h4>
+                        <div id="simResult" class="sim-box empty">No simulation executed yet</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 3: Visual Bitmap Matrix -->
+        <section id="tab-bitmap" class="tab-content">
+            <div class="card">
+                <h2>Interactive 128-Bit Bitmap Inspector</h2>
+                <p class="card-desc">ISO 8583 uses bitwise flags in 64-bit blocks to signal which data elements are present in the payload.</p>
+                
+                <div class="bitmap-grid-container">
+                    <div class="bitmap-block">
+                        <h3>Primary Bitmap (Bits 1 - 64)</h3>
+                        <p class="sub-text">Hex: <span id="primaryHexVal" class="code-font highlight">0000000000000000</span></p>
+                        <div id="gridPrimary" class="bitmap-grid"></div>
+                    </div>
+
+                    <div class="bitmap-block">
+                        <h3>Secondary Bitmap (Bits 65 - 128)</h3>
+                        <p class="sub-text">Hex: <span id="secondaryHexVal" class="code-font">None</span></p>
+                        <div id="gridSecondary" class="bitmap-grid"></div>
+                    </div>
+                </div>
+
+                <div id="bitHoverInfo" class="bit-hover-card">
+                    Hover or click any bit cell above to inspect its mapped ISO Data Element field definition.
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 4: Guide -->
+        <section id="tab-guide" class="tab-content">
+            <div class="card">
+                <h2>ISO 8583 Core Concepts & Spec Reference</h2>
+                <div class="guide-grid">
+                    <div class="guide-card">
+                        <div class="guide-num">1</div>
+                        <h3>MTI (Message Type Identifier)</h3>
+                        <p>The 4-digit MTI defines the purpose of the message:</p>
+                        <ul>
+                            <li><strong>Pos 1 (Version):</strong> <code>0</code>=1987, <code>1</code>=1993, <code>2</code>=2003</li>
+                            <li><strong>Pos 2 (Class):</strong> <code>1</code>=Auth, <code>2</code>=Financial, <code>4</code>=Reversal, <code>8</code>=Network</li>
+                            <li><strong>Pos 3 (Function):</strong> <code>0</code>=Request, <code>1</code>=Response, <code>2</code>=Advice</li>
+                            <li><strong>Pos 4 (Originator):</strong> <code>0</code>=Acquirer, <code>1</code>=Acquirer Repeat, <code>2</code>=Issuer</li>
+                        </ul>
+                    </div>
+
+                    <div class="guide-card">
+                        <div class="guide-num">2</div>
+                        <h3>Bitmaps & Field Flags</h3>
+                        <p>The Primary Bitmap (16 hex chars / 64 bits) acts as an index. Bit 1 indicates whether a Secondary Bitmap (bits 65-128) is attached.</p>
+                        <p>Bit 3 = 1 means DE 3 (Processing Code) is included.</p>
+                    </div>
+
+                    <div class="guide-card">
+                        <div class="guide-num">3</div>
+                        <h3>Data Encodings</h3>
+                        <ul>
+                            <li><strong>FIXED:</strong> Fixed length string (e.g. DE 3 is 6 digits: <code>000000</code>).</li>
+                            <li><strong>LLVAR:</strong> 2-digit length prefix + value (e.g. DE 2 PAN <code>164532015588991234</code>).</li>
+                            <li><strong>LLLVAR:</strong> 3-digit length prefix + value (e.g. DE 48 Private Data <code>012Hello World!</code>).</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

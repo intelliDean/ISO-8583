@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: iso8583
+
+server:
+  port: 8081
