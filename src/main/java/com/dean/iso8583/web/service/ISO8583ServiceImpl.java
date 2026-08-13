@@ -7,6 +7,8 @@ import com.dean.iso8583.core.dto.IsoFieldDef;
 import com.dean.iso8583.core.dto.IsoFieldType;
 import com.dean.iso8583.core.dto.IsoMessage;
 import com.dean.iso8583.core.dto.IsoSpecDefinition;
+import com.dean.iso8583.core.emv.EmvParseResult;
+import com.dean.iso8583.core.emv.EmvTlvParser;
 import com.dean.iso8583.core.spec.IsoSpecRegistry;
 import com.dean.iso8583.web.data.dto.*;
 import com.dean.iso8583.web.data.utils.IsoMtiDescriptions;
@@ -73,6 +75,47 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     @Override
     public SimulateResult simulateTransaction(SimulateRequest request) {
         return isoTcpClient.simulate(request.rawPayload());
+    }
+
+    /**
+     * Developer Note:
+     * Parses DE 55 (ICC System Related Data) using the BER-TLV parser.
+     *
+     * Key fraud-detection signals surfaced in the response:
+     *  - {@code hasArqc}   — ARQC (9F26) presence; absent in magnetic-stripe fallback
+     *  - {@code hasAtc}    — ATC (9F36) presence; must be validated for replay attacks
+     *  - {@code atcDecimal} — integer ATC value for comparison with issuer stored value
+     *
+     * In production, this method should be extended to:
+     *  1. Forward {@code arqcValue} + session data to an HSM for ARQC verification.
+     *  2. Compare {@code atcDecimal} against the issuer's card-level ATC store.
+     *  3. Log the IAD (9F10) for offline CVR auditing.
+     */
+    @Override
+    public EmvParseResponse parseEmv(EmvParseRequest request) {
+        EmvParseResult result = EmvTlvParser.parse(request.de55Hex());
+
+        String arqcValue  = result.getValue("9F26");
+        String atcValue   = result.getValue("9F36");
+        Integer atcDecimal = atcValue != null
+                ? Integer.parseInt(atcValue, 16)
+                : null;
+
+        log.info("EMV DE55 parsed — tags={}, hasARQC={}, ATC={}",
+                result.tags().size(),
+                result.hasTag("9F26"),
+                atcDecimal);
+
+        return new EmvParseResponse(
+                result.rawHex(),
+                result.tags().size(),
+                result.tags(),
+                result.hasTag("9F26"),
+                result.hasTag("9F36"),
+                arqcValue,
+                atcValue,
+                atcDecimal
+        );
     }
 
     private UnpackResult buildUnpackResult(IsoMessage message, IsoSpecDefinition spec) {
