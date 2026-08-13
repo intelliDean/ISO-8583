@@ -61,7 +61,9 @@ public class IsoMessageProcessor {
             return "AUTH01";
         }
 
-        return "AUTH" + request.getField(11);
+        String stan = request.getField(11);
+        String code = "A" + stan;
+        return code.length() > 6 ? code.substring(0, 6) : String.format("%-6s", code);
     }
 
     private String generateRrn(IsoMessage request) {
