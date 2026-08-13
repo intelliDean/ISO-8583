@@ -15,3 +15,9 @@ iso:
     port: ${ISO_TCP_PORT:8583}
     max-frame-length: ${ISO_TCP_MAX_FRAME_LENGTH:8192}
     shutdown-timeout: 10
+  echo:
+    enabled: ${ISO_ECHO_ENABLED:false}
+    interval-seconds: ${ISO_ECHO_INTERVAL_SECONDS:30}
+    failure-threshold: ${ISO_ECHO_FAILURE_THRESHOLD:3}
+    timeout-ms: ${ISO_ECHO_TIMEOUT_MS:5000}
+    tpdu-header: ${ISO_ECHO_TPDU_HEADER:6000000000}

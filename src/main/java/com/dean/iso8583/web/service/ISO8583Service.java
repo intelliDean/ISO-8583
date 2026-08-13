@@ -33,4 +33,18 @@ public interface ISO8583Service {
      * @return collection of transaction records
      */
     java.util.Collection<com.dean.iso8583.core.reversal.TransactionRecord> getTransactions();
+
+    /**
+     * Executes an on-demand ISO 8583 0800 Keep-Alive Echo test against the peer host.
+     *
+     * @return result of the echo test execution including roundtrip latency and response code
+     */
+    com.dean.iso8583.core.echo.EchoResult triggerEcho();
+
+    /**
+     * Retrieves the current communication channel health telemetry and statistics report.
+     *
+     * @return channel status report
+     */
+    com.dean.iso8583.core.echo.ChannelStatusReport getEchoStatus();
 }

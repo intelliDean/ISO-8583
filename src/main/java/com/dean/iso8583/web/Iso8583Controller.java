@@ -94,4 +94,29 @@ public class Iso8583Controller {
     public ResponseEntity<java.util.Collection<com.dean.iso8583.core.reversal.TransactionRecord>> getTransactions() {
         return ResponseEntity.ok(iso8583Service.getTransactions());
     }
+
+    /**
+     * GET /api/iso/echo/status
+     *
+     * <p>Returns real-time network management keep-alive telemetry and channel health status.</p>
+     *
+     * @return channel status report
+     */
+    @GetMapping("/echo/status")
+    public ResponseEntity<com.dean.iso8583.core.echo.ChannelStatusReport> getEchoStatus() {
+        return ResponseEntity.ok(iso8583Service.getEchoStatus());
+    }
+
+    /**
+     * POST /api/iso/echo/trigger
+     *
+     * <p>Executes an immediate on-demand ISO 8583 0800 Keep-Alive Echo Test request
+     * and awaits the 0810 response.</p>
+     *
+     * @return echo execution result with latency and status
+     */
+    @PostMapping("/echo/trigger")
+    public ResponseEntity<com.dean.iso8583.core.echo.EchoResult> triggerEcho() {
+        return ResponseEntity.ok(iso8583Service.triggerEcho());
+    }
 }

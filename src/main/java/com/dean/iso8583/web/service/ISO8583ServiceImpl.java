@@ -7,6 +7,9 @@ import com.dean.iso8583.core.dto.IsoFieldDef;
 import com.dean.iso8583.core.dto.IsoFieldType;
 import com.dean.iso8583.core.dto.IsoMessage;
 import com.dean.iso8583.core.dto.IsoSpecDefinition;
+import com.dean.iso8583.core.echo.ChannelStatusReport;
+import com.dean.iso8583.core.echo.EchoResult;
+import com.dean.iso8583.core.echo.IsoEchoManager;
 import com.dean.iso8583.core.emv.EmvParseResult;
 import com.dean.iso8583.core.emv.EmvTlvParser;
 import com.dean.iso8583.core.reversal.TransactionRecord;
@@ -26,7 +29,8 @@ import java.util.Map;
 /**
  * Developer Note:
  * Enterprise ISO 8583 Service Implementation.
- * Orchestrates message packing, unpacking, dynamic spec resolution, host simulation, and transaction state queries.
+ * Orchestrates message packing, unpacking, dynamic spec resolution, host simulation,
+ * transaction state queries, and keep-alive network heartbeat telemetry.
  */
 @Slf4j
 @Service
@@ -36,6 +40,7 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     private final IsoTcpClient isoTcpClient;
     private final IsoSpecRegistry isoSpecRegistry;
     private final TransactionStore transactionStore;
+    private final IsoEchoManager isoEchoManager;
 
     @Override
     public Map<Integer, IsoFieldDef> getCatalog() {
@@ -125,6 +130,16 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     @Override
     public Collection<TransactionRecord> getTransactions() {
         return transactionStore.findAll();
+    }
+
+    @Override
+    public EchoResult triggerEcho() {
+        return isoEchoManager.triggerEcho();
+    }
+
+    @Override
+    public ChannelStatusReport getEchoStatus() {
+        return isoEchoManager.getChannelStatus();
     }
 
     private UnpackResult buildUnpackResult(IsoMessage message, IsoSpecDefinition spec) {

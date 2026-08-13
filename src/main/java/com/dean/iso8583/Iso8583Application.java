@@ -9,7 +9,10 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.Environment;
 
 
+import org.springframework.scheduling.annotation.EnableScheduling;
+
 @Slf4j
+@EnableScheduling
 @SpringBootApplication
 @ConfigurationPropertiesScan
 public class Iso8583Application {
