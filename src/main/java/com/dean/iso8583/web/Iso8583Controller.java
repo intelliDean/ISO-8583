@@ -1,15 +1,19 @@
 package com.dean.iso8583.web;
 
-import com.dean.iso8583.core.*;
 import com.dean.iso8583.core.dto.IsoFieldDef;
+import com.dean.iso8583.core.dto.IsoSpecDefinition;
 import com.dean.iso8583.web.data.dto.*;
 import com.dean.iso8583.web.service.ISO8583Service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.*;
+import java.util.Map;
 
+/**
+ * Developer Note:
+ * REST API Controller providing ISO 8583 message parsing, packing, dialect specification catalog, and host simulation endpoints.
+ */
 @RestController
 @RequestMapping("/api/iso")
 @CrossOrigin(origins = "*")
@@ -19,8 +23,13 @@ public class Iso8583Controller {
     private final ISO8583Service iso8583Service;
 
     @GetMapping("/spec")
-    public Map<Integer, IsoFieldDef> getCatalog() {
-        return IsoSpec.getAllFieldDefs();
+    public ResponseEntity<Map<Integer, IsoFieldDef>> getCatalog() {
+        return ResponseEntity.ok(iso8583Service.getCatalog());
+    }
+
+    @GetMapping("/specs")
+    public ResponseEntity<Map<String, IsoSpecDefinition>> getSpecs() {
+        return ResponseEntity.ok(iso8583Service.getSpecs());
     }
 
     @PostMapping("/unpack")

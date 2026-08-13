@@ -45,6 +45,17 @@
                     <button class="btn btn-secondary btn-sm" onclick="loadPreset('reversal')">0400 Reversal Request</button>
                 </div>
 
+                <div class="form-row" style="margin-bottom: 1.25rem;">
+                    <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                        <label for="inspectSpecSelect">Network Packager Dialect:</label>
+                        <select id="inspectSpecSelect" onchange="unpackPayload()">
+                            <option value="iso8583-1987">ISO 8583:1987 Standard</option>
+                            <option value="visa-sms">Visa SMS (Single Message System)</option>
+                            <option value="mastercard-ipm">Mastercard IPM (Integrated Processing Mode)</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label for="rawInput">Raw Payload String:</label>
                     <textarea id="rawInput" rows="3" placeholder="e.g. 600000000002007020000000C0800016453201558899123400000000000000002550000123TERM0001MERCHANT1234567840"></textarea>

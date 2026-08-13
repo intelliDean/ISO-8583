@@ -3,26 +3,49 @@ package com.dean.iso8583.core;
 import com.dean.iso8583.core.dto.IsoFieldDef;
 import com.dean.iso8583.core.dto.IsoFieldType;
 import com.dean.iso8583.core.dto.IsoMessage;
+import com.dean.iso8583.core.dto.IsoSpecDefinition;
 
 import java.util.Objects;
 
+/**
+ * Developer Note:
+ * Enterprise ISO 8583 Packet Serialization Engine.
+ * Supports both static default packing and dynamic network packager specifications (e.g. Visa SMS, Mastercard IPM).
+ * 
+ * Frame Format:
+ * [TPDU Header (Optional)][MTI (4 Chars)][Primary Bitmap (16 Hex Chars)][Secondary Bitmap (16 Hex Chars)][Data Elements...]
+ * 
+ * Field Length Strategies:
+ * - FIXED_NUMERIC: Left zero-padded to field max length.
+ * - FIXED_ALPHA / BINARY_FIXED: Right space-padded to field max length.
+ * - LLVAR: 2-digit ASCII length prefix + field value.
+ * - LLLVAR: 3-digit ASCII length prefix + field value.
+ */
 public final class IsoPacker {
+
+    private static final int MTI_LENGTH = 4;
+    private static final int MIN_FIELD_ID = 2;
+    private static final int MAX_FIELD_ID = 128;
 
     private IsoPacker() {
         // Utility class
     }
 
     /**
-     * Serializes an ISO 8583 message into its raw string representation.
-     *
-     * <pre>
-     * [TPDU][MTI][Primary Bitmap][Secondary Bitmap][Data Elements]
-     * </pre>
-     *
-     * @param message ISO 8583 message to serialize
-     * @return packed ISO 8583 message
+     * Serializes an ISO 8583 message using the default ISO 8583:1987 packager specification.
      */
     public static String packToString(IsoMessage message) {
+        return packToString(message, null);
+    }
+
+    /**
+     * Serializes an ISO 8583 message using a specific network packager specification definition.
+     *
+     * @param message ISO 8583 message to serialize
+     * @param spec    Network specification definition (or null to use standard IsoSpec)
+     * @return Packed ASCII/Hex ISO payload string
+     */
+    public static String packToString(IsoMessage message, IsoSpecDefinition spec) {
         Objects.requireNonNull(message, "message cannot be null");
 
         StringBuilder packed = new StringBuilder();
@@ -31,14 +54,13 @@ public final class IsoPacker {
         appendMti(packed, message);
         appendPrimaryBitmap(packed, message);
         appendSecondaryBitmap(packed, message);
-        appendDataElements(packed, message);
+        appendDataElements(packed, message, spec);
 
         return packed.toString();
     }
 
     private static void appendHeader(StringBuilder packed, IsoMessage message) {
         String header = message.getHeader();
-
         if (header != null && !header.isBlank()) {
             packed.append(header);
         }
@@ -46,9 +68,7 @@ public final class IsoPacker {
 
     private static void appendMti(StringBuilder packed, IsoMessage message) {
         String mti = message.getMti();
-
         validateMti(mti);
-
         packed.append(mti);
     }
 
@@ -62,26 +82,22 @@ public final class IsoPacker {
         }
     }
 
-    private static void appendDataElements(StringBuilder packed, IsoMessage message) {
-
-        message.getFields()
-                .forEach((fieldId, value) -> {
-
-                    validateFieldId(fieldId);
-
-                    IsoFieldDef definition = getFieldDefinition(fieldId);
-
-                    packed.append(formatField(definition, value));
-                });
+    private static void appendDataElements(StringBuilder packed, IsoMessage message, IsoSpecDefinition spec) {
+        message.getFields().forEach((fieldId, value) -> {
+            validateFieldId(fieldId);
+            IsoFieldDef definition = getFieldDefinition(fieldId, spec);
+            packed.append(formatField(definition, value));
+        });
     }
 
-    private static IsoFieldDef getFieldDefinition(int fieldId) {
+    private static IsoFieldDef getFieldDefinition(int fieldId, IsoSpecDefinition spec) {
+        if (spec != null && spec.getFieldDef(fieldId) != null) {
+            return spec.getFieldDef(fieldId);
+        }
         IsoFieldDef definition = IsoSpec.getFieldDef(fieldId);
-
         if (definition != null) {
             return definition;
         }
-
         return defaultFieldDefinition(fieldId);
     }
 
@@ -100,52 +116,53 @@ public final class IsoPacker {
 
         return switch (definition.type()) {
             case FIXED_NUMERIC -> formatFixedNumeric(definition, value);
-
-            case FIXED_ALPHA -> formatFixedAlpha(definition, value);
-
-            case BINARY_FIXED -> formatBinaryFixed(definition, value);
-
-            case LLVAR_NUMERIC, LLVAR_ALPHA -> formatLlvar(definition, value);
-
-            case LLLVAR_ALPHA -> formatLllvar(definition, value);
-
-            default -> "Not yet implemented: " + definition.type();
+            case FIXED_ALPHA, BINARY_FIXED -> formatFixedAlpha(definition, value);
+            case LLVAR_NUMERIC, LLVAR_ALPHA -> formatVariableLength(definition, value, 2);
+            case LLLVAR_ALPHA -> formatVariableLength(definition, value, 3);
+            default -> formatFixedAlpha(definition, value);
         };
     }
 
     private static String formatFixedNumeric(IsoFieldDef definition, String value) {
         validateLength(definition, value);
-
-        if (!value.matches("\\d+")) {
-            throw new IllegalArgumentException(
-                    "Field %d must contain only numeric characters".formatted(definition.fieldId())
-            );
-        }
-
-        return "0".repeat(definition.maxLength() - value.length()) + value;
+        return padLeftWithZeros(value, definition.maxLength());
     }
 
     private static String formatFixedAlpha(IsoFieldDef definition, String value) {
         validateLength(definition, value);
-
-        return value + " ".repeat(definition.maxLength() - value.length());
+        return padRightWithSpaces(value, definition.maxLength());
     }
 
-    private static String formatBinaryFixed(IsoFieldDef definition, String value) {
+    private static String formatVariableLength(IsoFieldDef definition, String value, int lengthDigits) {
         validateLength(definition, value);
-        return value;
+        String lengthPrefix = formatLengthPrefix(value.length(), lengthDigits);
+        return lengthPrefix + value;
     }
 
-    private static String formatLlvar(IsoFieldDef definition, String value) {
-        validateVariableLength(definition, value, 2);
-
-        return "%02d%s".formatted(value.length(), value);
+    private static String formatLengthPrefix(int length, int digits) {
+        return String.format("%0" + digits + "d", length);
     }
 
-    private static String formatLllvar(IsoFieldDef definition, String value) {
-        validateVariableLength(definition, value, 3);
+    private static String padLeftWithZeros(String value, int totalLength) {
+        return String.format("%" + totalLength + "s", value).replace(' ', '0');
+    }
 
-        return "%03d%s".formatted(value.length(), value);
+    private static String padRightWithSpaces(String value, int totalLength) {
+        return String.format("%-" + totalLength + "s", value);
+    }
+
+    private static void validateMti(String mti) {
+        if (mti == null || mti.length() != MTI_LENGTH) {
+            throw new IllegalArgumentException("MTI must be exactly 4 characters");
+        }
+    }
+
+    private static void validateFieldId(int fieldId) {
+        if (fieldId < MIN_FIELD_ID || fieldId > MAX_FIELD_ID) {
+            throw new IllegalArgumentException(
+                    "Field ID must be between %d and %d. Received: %d".formatted(MIN_FIELD_ID, MAX_FIELD_ID, fieldId)
+            );
+        }
     }
 
     private static void validateLength(IsoFieldDef definition, String value) {
@@ -156,121 +173,4 @@ public final class IsoPacker {
             );
         }
     }
-
-    private static void validateVariableLength(IsoFieldDef definition, String value, int lengthDigits) {
-        validateLength(definition, value);
-
-        int maximumRepresentableLength =
-                (int) Math.pow(10, lengthDigits) - 1;
-
-        if (value.length() > maximumRepresentableLength) {
-            throw new IllegalArgumentException(
-                    "Field %d exceeds %d-digit length prefix capacity".formatted(definition.fieldId(), lengthDigits)
-            );
-        }
-    }
-
-    private static void validateMti(String mti) {
-        if (mti == null || mti.length() != 4) {
-            throw new IllegalArgumentException("MTI must be exactly 4 characters");
-        }
-
-        if (!mti.chars().allMatch(Character::isDigit)) {
-            throw new IllegalArgumentException("MTI must contain only numeric characters");
-        }
-    }
-
-    private static void validateFieldId(int fieldId) {
-        if (fieldId < 2 || fieldId > 128) {
-            throw new IllegalArgumentException("Field ID must be between 2 and 128: %d".formatted(fieldId));
-        }
-    }
 }
-
-
-//public class IsoPacker {
-//
-//    /**
-//     * Serializes an IsoMessage into a raw ASCII/Hex string representation.
-//     */
-//    public static String packToString(IsoMessage message) {
-//        StringBuilder packed = new StringBuilder();
-//
-//        // 1. Header (TPDU)
-//        if (message.getHeader() != null && !message.getHeader().isEmpty()) {
-//            packed.append(message.getHeader());
-//        }
-//
-//        // 2. MTI (4 chars)
-//        if (message.getMti() == null || message.getMti().length() != 4) {
-//            throw new IllegalArgumentException("MTI must be exactly 4 characters");
-//        }
-//        packed.append(message.getMti());
-//
-//        // 3. Primary Bitmap
-//        String primaryBitmap = message.getPrimaryBitmapHex();
-//        packed.append(primaryBitmap);
-//
-//        // 4. Secondary Bitmap (if present)
-//        if (message.hasSecondaryBitmap()) {
-//            packed.append(message.getSecondaryBitmapHex());
-//        }
-//
-//        // 5. Data Elements
-//        for (Map.Entry<Integer, String> entry : message.getFields().entrySet()) {
-//            int fieldId = entry.getKey();
-//            String value = entry.getValue();
-//
-//            IsoFieldDef fieldDef = IsoSpec.getFieldDef(fieldId);
-//
-//            if (fieldDef == null) {
-//                // Default fallback if not defined in spec: treat as LLVAR
-//                fieldDef = IsoFieldDef.builder()
-//                        .fieldId(fieldId)
-//                        .name("Field " + fieldId)
-//                        .type(IsoFieldType.LLVAR_ALPHA)
-//                        .maxLength(99)
-//                        .description("Custom Field")
-//                        .build();
-//            }
-//
-//            packed.append(formatField(fieldDef, value));
-//        }
-//
-//        return packed.toString();
-//    }
-//
-//    private static String formatField(IsoFieldDef def, String value) {
-//        if (value == null) value = "";
-//
-//        int len = Math.min(value.length(), def.maxLength());
-//
-//        return switch (def.type()) {
-//            case FIXED_NUMERIC -> {
-//                // Left zero pad to fixed max length
-//                if (value.length() > def.maxLength()) {
-//                    yield value.substring(0, def.maxLength());
-//                }
-//                yield String.format("%" + def.maxLength() + "s", value).replace(' ', '0');
-//            }
-//            case FIXED_ALPHA, BINARY_FIXED -> {
-//                // Right space pad to fixed max length
-//                if (value.length() > def.maxLength()) {
-//                    yield value.substring(0, def.maxLength());
-//                }
-//                yield String.format("%-" + def.maxLength() + "s", value);
-//            }
-//            case LLVAR_NUMERIC, LLVAR_ALPHA -> {
-//                // 2-digit length prefix
-//                String trimmedVal = value.substring(0, len);
-//                yield String.format("%02d%s", len, trimmedVal);
-//            }
-//            case LLLVAR_ALPHA -> {
-//                // 3-digit length prefix
-//                String lllTrimmedVal = value.substring(0, len);
-//                yield String.format("%03d%s", len, lllTrimmedVal);
-//            }
-//            default -> value;
-//        };
-//    }
-//}

@@ -59,11 +59,13 @@ async function unpackPayload() {
 
     if (!payload) return;
 
+    const specId = document.getElementById('inspectSpecSelect') ? document.getElementById('inspectSpecSelect').value : 'iso8583-1987';
+
     try {
         const res = await fetch('/api/iso/unpack', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ payload, hasHeader })
+            body: JSON.stringify({ payload, hasHeader, specId })
         });
 
         if (!res.ok) throw new Error('Unpack failed');

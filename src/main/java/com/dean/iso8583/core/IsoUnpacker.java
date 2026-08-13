@@ -1,12 +1,24 @@
 package com.dean.iso8583.core;
 
-
 import com.dean.iso8583.core.dto.IsoFieldDef;
 import com.dean.iso8583.core.dto.IsoFieldType;
 import com.dean.iso8583.core.dto.IsoMessage;
+import com.dean.iso8583.core.dto.IsoSpecDefinition;
 import com.dean.iso8583.core.dto.PayloadReader;
 import org.springframework.util.StringUtils;
 
+/**
+ * Developer Note:
+ * Enterprise ISO 8583 Stream Parser & Unpacker Engine.
+ * Supports both static default unpacking and dynamic network packager specifications (e.g. Visa SMS, Mastercard IPM).
+ * 
+ * Parsing Algorithm:
+ * 1. Extract optional TPDU Transport Header (10 chars by default).
+ * 2. Extract 4-digit Message Type Identifier (MTI).
+ * 3. Extract 16 Hex character (64 bits) Primary Bitmap.
+ * 4. Check Bit 1: If active, extract 16 Hex character (64 bits) Secondary Bitmap (DE 65 - 128).
+ * 5. Parse Data Elements in numerical sequence (2..128) according to spec length indicator rules.
+ */
 public final class IsoUnpacker {
 
     private static final int HEADER_LENGTH = 10;
@@ -21,13 +33,25 @@ public final class IsoUnpacker {
     }
 
     /**
-     * Unpacks a raw ASCII/Hex payload into a structured IsoMessage.
+     * Unpacks a raw ASCII/Hex payload into a structured IsoMessage using default IsoSpec.
      *
      * @param payload   raw ISO message string
      * @param hasHeader whether the message starts with a 10-character TPDU header
      * @return unpacked ISO message
      */
     public static IsoMessage unpack(String payload, boolean hasHeader) {
+        return unpack(payload, hasHeader, null);
+    }
+
+    /**
+     * Unpacks a raw ASCII/Hex payload into a structured IsoMessage using a custom network spec definition.
+     *
+     * @param payload   raw ISO message string
+     * @param hasHeader whether the message starts with a TPDU header
+     * @param spec      custom IsoSpecDefinition (or null for default)
+     * @return unpacked ISO message
+     */
+    public static IsoMessage unpack(String payload, boolean hasHeader, IsoSpecDefinition spec) {
         validatePayload(payload);
 
         PayloadReader reader = new PayloadReader(payload);
@@ -38,7 +62,7 @@ public final class IsoUnpacker {
 
         boolean[] activeFields = readBitmaps(reader);
 
-        readDataElements(reader, message, activeFields);
+        readDataElements(reader, message, activeFields, spec);
 
         return message;
     }
@@ -74,31 +98,27 @@ public final class IsoUnpacker {
         parseBitmap(bitmapHex, startFieldId, activeFields);
     }
 
-    private static void readDataElements(PayloadReader reader, IsoMessage message, boolean[] activeFields) {
-
+    private static void readDataElements(PayloadReader reader, IsoMessage message, boolean[] activeFields, IsoSpecDefinition spec) {
         for (int fieldId = 2; fieldId <= MAX_FIELD_ID; fieldId++) {
             if (activeFields[fieldId]) {
-                readDataElement(reader, message, fieldId);
+                readDataElement(reader, message, fieldId, spec);
             }
         }
     }
 
-    private static void readDataElement(PayloadReader reader, IsoMessage message, int fieldId) {
-        IsoFieldDef definition = getFieldDefinition(fieldId);
-
+    private static void readDataElement(PayloadReader reader, IsoMessage message, int fieldId, IsoSpecDefinition spec) {
+        IsoFieldDef definition = getFieldDefinition(fieldId, spec);
         int valueLength = determineValueLength(reader, definition, fieldId);
-
         String value = reader.read(valueLength, "DE %d value".formatted(fieldId));
-
         message.setField(fieldId, value);
     }
 
-    private static IsoFieldDef getFieldDefinition(int fieldId) {
+    private static IsoFieldDef getFieldDefinition(int fieldId, IsoSpecDefinition spec) {
+        if (spec != null && spec.getFieldDef(fieldId) != null) {
+            return spec.getFieldDef(fieldId);
+        }
         IsoFieldDef definition = IsoSpec.getFieldDef(fieldId);
-
-        return definition != null
-                ? definition
-                : createGenericFieldDefinition(fieldId);
+        return definition != null ? definition : createGenericFieldDefinition(fieldId);
     }
 
     private static IsoFieldDef createGenericFieldDefinition(int fieldId) {
@@ -112,22 +132,16 @@ public final class IsoUnpacker {
     }
 
     private static int determineValueLength(PayloadReader reader, IsoFieldDef definition, int fieldId) {
-
         return switch (definition.type()) {
             case FIXED_NUMERIC, FIXED_ALPHA, BINARY_FIXED -> definition.maxLength();
-
             case LLVAR_NUMERIC, LLVAR_ALPHA -> readVariableLength(reader, 2, fieldId);
-
             case LLLVAR_ALPHA -> readVariableLength(reader, 3, fieldId);
-
-            default -> -1;
+            default -> definition.maxLength();
         };
     }
 
     private static int readVariableLength(PayloadReader reader, int lengthDigits, int fieldId) {
-
         String length = reader.read(lengthDigits, "length prefix for DE %d".formatted(fieldId));
-
         try {
             return Integer.parseInt(length);
         } catch (NumberFormatException exception) {
@@ -138,21 +152,16 @@ public final class IsoUnpacker {
     }
 
     private static void parseBitmap(String hexBitmap, int startFieldId, boolean[] activeFields) {
-
         byte[] bytes = hexToBytes(hexBitmap);
-
         for (int byteIndex = 0; byteIndex < bytes.length; byteIndex++) {
             parseBitmapByte(bytes[byteIndex], byteIndex, startFieldId, activeFields);
         }
     }
 
     private static void parseBitmapByte(byte value, int byteIndex, int startFieldId, boolean[] activeFields) {
-
         for (int bit = 0; bit < 8; bit++) {
             int fieldId = calculateFieldId(startFieldId, byteIndex, bit);
-
             if (fieldId > MAX_FIELD_ID) return;
-
             activeFields[fieldId] = isBitSet(value, bit);
         }
     }
@@ -167,25 +176,19 @@ public final class IsoUnpacker {
 
     private static byte[] hexToBytes(String hex) {
         validateHex(hex);
-
         byte[] bytes = new byte[hex.length() / 2];
-
         for (int i = 0; i < hex.length(); i += 2) {
             bytes[i / 2] = hexByte(hex.charAt(i), hex.charAt(i + 1));
         }
-
         return bytes;
     }
 
     private static byte hexByte(char high, char low) {
-
         int highDigit = Character.digit(high, 16);
         int lowDigit = Character.digit(low, 16);
-
         if (highDigit == -1 || lowDigit == -1) {
             throw new IllegalArgumentException("Invalid hexadecimal character");
         }
-
         return (byte) ((highDigit << 4) | lowDigit);
     }
 
@@ -195,160 +198,3 @@ public final class IsoUnpacker {
         }
     }
 }
-
-//    private static final class PayloadReader {
-//
-//        private final String payload;
-//        private int offset;
-//
-//        private PayloadReader(String payload) {
-//            this.payload = payload;
-//        }
-//
-//        private String read(int length, String description) {
-//            ensureAvailable(length, description);
-//
-//            String value = payload.substring(offset, offset + length);
-//
-//            offset += length;
-//
-//            return value;
-//        }
-//
-//        private void ensureAvailable(int length, String description) {
-//            if (offset + length > payload.length()) {
-//                throw new IllegalArgumentException(
-//                        "Invalid payload: truncated while reading %s (expected %d characters)"
-//                                .formatted(description, length)
-//                );
-//            }
-//        }
-//    }
-//}
-
-
-//public class IsoUnpacker {
-//
-//    /**
-//     * Unpacks a raw ASCII/Hex payload into a structured IsoMessage.
-//     *
-//     * @param payload Raw ISO message string
-//     * @param hasHeader Whether the message starts with a 10-char TPDU header
-//     */
-//    public static IsoMessage unpack(String payload, boolean hasHeader) {
-//        if (payload == null || payload.isEmpty()) {
-//            throw new IllegalArgumentException("Payload cannot be null or empty");
-//        }
-//
-//        IsoMessage msg = new IsoMessage();
-//        int offset = 0;
-//
-//        // 1. Header (10 chars if present)
-//        if (hasHeader) {
-//            if (payload.length() < 10) {
-//                throw new IllegalArgumentException("Invalid payload: too short for 10-char header");
-//            }
-//            msg.setHeader(payload.substring(offset, offset + 10));
-//            offset += 10;
-//        }
-//
-//        // 2. MTI (4 chars)
-//        if (payload.length() < offset + 4) {
-//            throw new IllegalArgumentException("Invalid payload: too short for MTI");
-//        }
-//        msg.setMti(payload.substring(offset, offset + 4));
-//        offset += 4;
-//
-//        // 3. Primary Bitmap (16 hex chars = 64 bits)
-//        if (payload.length() < offset + 16) {
-//            throw new IllegalArgumentException("Invalid payload: too short for Primary Bitmap");
-//        }
-//        String primaryBitmapHex = payload.substring(offset, offset + 16);
-//        offset += 16;
-//
-//        boolean[] activeFields = new boolean[129];
-//        parseBitmap(primaryBitmapHex, 1, activeFields);
-//
-//        // 4. Secondary Bitmap (if Bit 1 is active)
-//        if (activeFields[1]) {
-//            if (payload.length() < offset + 16) {
-//                throw new IllegalArgumentException("Invalid payload: too short for Secondary Bitmap");
-//            }
-//            String secondaryBitmapHex = payload.substring(offset, offset + 16);
-//            offset += 16;
-//            parseBitmap(secondaryBitmapHex, 65, activeFields);
-//        }
-//
-//        // 5. Unpack active Data Elements in numerical order
-//        for (int fieldId = 2; fieldId <= 128; fieldId++) {
-//            if (!activeFields[fieldId]) {
-//                continue;
-//            }
-//
-//            IsoFieldDef def = IsoSpec.getFieldDef(fieldId);
-//            if (def == null) {
-//                def = new IsoFieldDef(fieldId, "Field " + fieldId, IsoFieldType.LLVAR_ALPHA, 99, "Generic Field");
-//            }
-//
-//            int valueLength = 0;
-//            switch (def.type()) {
-//                case FIXED_NUMERIC:
-//                case FIXED_ALPHA:
-//                case BINARY_FIXED:
-//                    valueLength = def.maxLength();
-//                    break;
-//
-//                case LLVAR_NUMERIC:
-//                case LLVAR_ALPHA:
-//                    if (payload.length() < offset + 2) {
-//                        throw new IllegalArgumentException("Truncated payload reading LLVAR length for DE " + fieldId);
-//                    }
-//                    valueLength = Integer.parseInt(payload.substring(offset, offset + 2));
-//                    offset += 2;
-//                    break;
-//
-//                case LLLVAR_ALPHA:
-//                    if (payload.length() < offset + 3) {
-//                        throw new IllegalArgumentException("Truncated payload reading LLLVAR length for DE " + fieldId);
-//                    }
-//                    valueLength = Integer.parseInt(payload.substring(offset, offset + 3));
-//                    offset += 3;
-//                    break;
-//            }
-//
-//            if (payload.length() < offset + valueLength) {
-//                throw new IllegalArgumentException(String.format("Truncated payload reading DE %d value (expected %d chars)", fieldId, valueLength));
-//            }
-//
-//            String value = payload.substring(offset, offset + valueLength);
-//            offset += valueLength;
-//            msg.setField(fieldId, value);
-//        }
-//
-//        return msg;
-//    }
-//
-//    private static void parseBitmap(String hexBitmap, int startFieldId, boolean[] activeFields) {
-//        byte[] bytes = hexToBytes(hexBitmap);
-//        for (int i = 0; i < bytes.length; i++) {
-//            byte b = bytes[i];
-//            for (int bit = 0; bit < 8; bit++) {
-//                boolean isSet = (b & (1 << (7 - bit))) != 0;
-//                int fieldId = startFieldId + (i * 8) + bit;
-//                if (fieldId <= 128) {
-//                    activeFields[fieldId] = isSet;
-//                }
-//            }
-//        }
-//    }
-//
-//    private static byte[] hexToBytes(String hex) {
-//        int len = hex.length();
-//        byte[] data = new byte[len / 2];
-//        for (int i = 0; i < len; i += 2) {
-//            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
-//                    + Character.digit(hex.charAt(i + 1), 16));
-//        }
-//        return data;
-//    }
-//}

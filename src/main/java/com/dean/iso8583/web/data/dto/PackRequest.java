@@ -5,7 +5,8 @@ import java.util.Map;
 public record PackRequest(
         String header,
         String mti,
-        Map<Object, String> fields
+        Map<Object, String> fields,
+        String specId
 ) {
     public PackRequest {
         fields = fields == null
@@ -13,5 +14,3 @@ public record PackRequest(
                 : Map.copyOf(fields);
     }
 }
-
-
