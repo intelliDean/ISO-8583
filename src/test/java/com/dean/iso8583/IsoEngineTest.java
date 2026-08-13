@@ -1,6 +1,9 @@
-package com.example.iso8583;
+package com.dean.iso8583;
 
-import com.example.iso8583.core.*;
+import com.dean.iso8583.core.dto.IsoMessage;
+import com.dean.iso8583.core.IsoPacker;
+import com.dean.iso8583.core.IsoUnpacker;
+import com.dean.iso8583.core.*;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

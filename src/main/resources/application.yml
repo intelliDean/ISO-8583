@@ -2,5 +2,16 @@ spring:
   application:
     name: iso8583
 
+  threads:
+    virtual: #virtual threads on
+      enabled: true
+
 server:
-  port: 8081
+  port: 8080
+
+iso:
+  tcp:
+    host: ${ISO_TCP_HOST:localhost}
+    port: ${ISO_TCP_PORT:8583}
+    max-frame-length: ${ISO_TCP_MAX_FRAME_LENGTH:8192}
+    shutdown-timeout: 10
