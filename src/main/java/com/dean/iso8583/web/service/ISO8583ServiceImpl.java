@@ -9,6 +9,8 @@ import com.dean.iso8583.core.dto.IsoMessage;
 import com.dean.iso8583.core.dto.IsoSpecDefinition;
 import com.dean.iso8583.core.emv.EmvParseResult;
 import com.dean.iso8583.core.emv.EmvTlvParser;
+import com.dean.iso8583.core.reversal.TransactionRecord;
+import com.dean.iso8583.core.reversal.TransactionStore;
 import com.dean.iso8583.core.spec.IsoSpecRegistry;
 import com.dean.iso8583.web.data.dto.*;
 import com.dean.iso8583.web.data.utils.IsoMtiDescriptions;
@@ -17,13 +19,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Developer Note:
  * Enterprise ISO 8583 Service Implementation.
- * Orchestrates message packing, unpacking, dynamic spec resolution, and host simulation.
+ * Orchestrates message packing, unpacking, dynamic spec resolution, host simulation, and transaction state queries.
  */
 @Slf4j
 @Service
@@ -32,6 +35,7 @@ public class ISO8583ServiceImpl implements ISO8583Service {
 
     private final IsoTcpClient isoTcpClient;
     private final IsoSpecRegistry isoSpecRegistry;
+    private final TransactionStore transactionStore;
 
     @Override
     public Map<Integer, IsoFieldDef> getCatalog() {
@@ -116,6 +120,11 @@ public class ISO8583ServiceImpl implements ISO8583Service {
                 atcValue,
                 atcDecimal
         );
+    }
+
+    @Override
+    public Collection<TransactionRecord> getTransactions() {
+        return transactionStore.findAll();
     }
 
     private UnpackResult buildUnpackResult(IsoMessage message, IsoSpecDefinition spec) {

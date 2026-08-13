@@ -26,4 +26,11 @@ public interface ISO8583Service {
      * @return structured parse result with all decoded tags and fraud signals
      */
     EmvParseResponse parseEmv(EmvParseRequest request);
+
+    /**
+     * Returns all tracked transaction records from the state store.
+     *
+     * @return collection of transaction records
+     */
+    java.util.Collection<com.dean.iso8583.core.reversal.TransactionRecord> getTransactions();
 }

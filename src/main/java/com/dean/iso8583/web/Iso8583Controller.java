@@ -78,4 +78,20 @@ public class Iso8583Controller {
     public ResponseEntity<EmvParseResponse> parseEmv(@RequestBody EmvParseRequest request) {
         return ResponseEntity.ok(iso8583Service.parseEmv(request));
     }
+
+    /**
+     * GET /api/iso/transactions
+     *
+     * <p>Returns all active and historical transaction records tracked by the
+     * in-memory Transaction State Store.</p>
+     *
+     * <p>Developer Note: Used by monitoring dashboards to inspect transaction
+     * lifecycle states ({@code AUTHORISED}, {@code REVERSED}, {@code PARTIALLY_REVERSED}).</p>
+     *
+     * @return collection of tracked transaction records
+     */
+    @GetMapping("/transactions")
+    public ResponseEntity<java.util.Collection<com.dean.iso8583.core.reversal.TransactionRecord>> getTransactions() {
+        return ResponseEntity.ok(iso8583Service.getTransactions());
+    }
 }
