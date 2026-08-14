@@ -97,14 +97,77 @@ def parse_response_summary(resp: str):
 
     mti = resp[offset:offset + 4]
     print(f"{BOLD}MTI:{RESET} {mti}")
-    print(f"{BOLD}Raw Response Payload:{RESET}\n{resp}\n")
+def compute_bitmaps(fields: dict) -> tuple[str, str | None]:
+    """Computes the primary and optional secondary 16-hex bitmaps for given field IDs."""
+    field_ids = [int(f) for f in fields.keys() if int(f) >= 2]
+    has_secondary = any(fid > 64 for fid in field_ids)
+
+    primary_bytes = bytearray(8)
+    if has_secondary:
+        primary_bytes[0] |= 0x80  # Bit 1 set
+
+    for fid in field_ids:
+        if 2 <= fid <= 64:
+            bit_idx = fid - 1
+            primary_bytes[bit_idx // 8] |= (1 << (7 - (bit_idx % 8)))
+
+    primary_hex = primary_bytes.hex().upper()
+
+    secondary_hex = None
+    if has_secondary:
+        sec_bytes = bytearray(8)
+        for fid in field_ids:
+            if 65 <= fid <= 128:
+                bit_idx = fid - 65
+                sec_bytes[bit_idx // 8] |= (1 << (7 - (bit_idx % 8)))
+        secondary_hex = sec_bytes.hex().upper()
+
+    return primary_hex, secondary_hex
+
+
+def pack_iso(mti: str, fields: dict, header: str = DEFAULT_TPDU) -> str:
+    """Dynamically packs an ISO 8583 payload from field map with correct variable prefixes."""
+    primary_bm, sec_bm = compute_bitmaps(fields)
+    packed = header + mti + primary_bm + (sec_bm or "")
+
+    for fid in sorted(int(k) for k in fields.keys()):
+        val = str(fields[fid])
+        # Format based on standard field types
+        if fid == 2:  # LLVAR PAN
+            packed += f"{len(val):02d}{val}"
+        elif fid == 3:  # 6-digit ProcCode
+            packed += f"{val:>06}"
+        elif fid == 4:  # 12-digit Amount
+            packed += f"{val:>012}"
+        elif fid == 7:  # 10-digit Date/Time
+            packed += f"{val:>010}"
+        elif fid == 11: # 6-digit STAN
+            packed += f"{val:>06}"
+        elif fid == 41: # 8-char TID
+            packed += f"{val:<8}"
+        elif fid == 42: # 15-char MID
+            packed += f"{val:<15}"
+        elif fid == 49: # 3-char Currency
+            packed += f"{val:>03}"
+        elif fid == 55: # LLLVAR DE 55
+            packed += f"{len(val):03d}{val}"
+        elif fid == 70: # 3-digit NetMgmt Code
+            packed += f"{val:>03}"
+        else:
+            packed += f"{len(val):02d}{val}"
+
+    return packed
 
 
 def action_echo(host, port):
     print(f"\n{YELLOW}--- [0800] Network Management Echo Test ---{RESET}")
-    # 0800 Echo payload (TPDU: 6000000000, MTI: 0800, DE 7, DE 11: 000001, DE 70: 301)
     now_str = datetime.utcnow().strftime("%m%d%H%M%S")
-    payload = f"6000000000080082200000000000000400000000000000{now_str}000001301"
+    fields = {
+        7: now_str,
+        11: "000001",
+        70: "301"
+    }
+    payload = pack_iso("0800", fields)
     print(f"Sending 0800 Echo Request (DE 70 = 301)...")
     try:
         resp = send_iso_frame(host, port, payload)
@@ -134,10 +197,17 @@ def action_purchase(host, port):
         stan = "000123"
 
     now_str = datetime.utcnow().strftime("%m%d%H%M%S")
-    pan_len = f"{len(pan):02d}"
-
-    # Build 0200 Purchase: DE 2 (PAN), DE 3 (000000), DE 4 (Amount), DE 7 (Date/Time), DE 11 (STAN), DE 41, DE 42, DE 49 (840)
-    payload = f"60000000000200B22000000010000016{pan_len}{pan}000000{amount_iso}{now_str}{stan}TERM0001MERCHANT1234567840"
+    fields = {
+        2: pan,
+        3: "000000",
+        4: amount_iso,
+        7: now_str,
+        11: stan,
+        41: "TERM0001",
+        42: "MERCHANT1234567",
+        49: "840"
+    }
+    payload = pack_iso("0200", fields)
 
     print(f"\nTransmitting 0200 Purchase to {host}:{port}...")
     try:
@@ -158,10 +228,17 @@ def action_reversal(host, port):
         pan = "4532015588991234"
 
     now_str = datetime.utcnow().strftime("%m%d%H%M%S")
-    pan_len = f"{len(pan):02d}"
-
-    # Build 0400 Reversal
-    payload = f"60000000000400B22000000010000016{pan_len}{pan}000000000000002550{now_str}{stan}TERM0001MERCHANT1234567840"
+    fields = {
+        2: pan,
+        3: "000000",
+        4: "000000002550",
+        7: now_str,
+        11: stan,
+        41: "TERM0001",
+        42: "MERCHANT1234567",
+        49: "840"
+    }
+    payload = pack_iso("0400", fields)
 
     print(f"\nTransmitting 0400 Reversal for STAN={stan}...")
     try:
@@ -173,17 +250,21 @@ def action_reversal(host, port):
 
 def action_emv_purchase(host, port):
     print(f"\n{YELLOW}--- [0200 + DE 55] EMV Chip Card Transaction ---{RESET}")
-    # DE 55 BER-TLV string with ARQC (9F26), ATC (9F36), IAD (9F10), CID (9F27)
     de55 = "9F2608A1B2C3D4E5F607089F360200E29F10120110A000002A0000000000000000000000FF9C01009A032608149F370412345678"
-    de55_len = f"{len(de55):03d}"
-
     now_str = datetime.utcnow().strftime("%m%d%H%M%S")
-    pan = "4532015588991234"
-    pan_len = f"{len(pan):02d}"
-    stan = "000555"
 
-    # DE 2, 3, 4, 7, 11, 41, 42, 49, 55
-    payload = f"60000000000200B22000000210000016{pan_len}{pan}000000000000004999{now_str}{stan}TERM0001MERCHANT1234567840{de55_len}{de55}"
+    fields = {
+        2: "4532015588991234",
+        3: "000000",
+        4: "000000004999",
+        7: now_str,
+        11: "000555",
+        41: "TERM0001",
+        42: "MERCHANT1234567",
+        49: "840",
+        55: de55
+    }
+    payload = pack_iso("0200", fields)
 
     print(f"Transmitting 0200 EMV Chip Card Purchase (ARQC: 9F26, ATC: 9F36 in DE 55)...")
     try:
