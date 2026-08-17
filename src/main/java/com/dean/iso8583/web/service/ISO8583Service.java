@@ -69,4 +69,29 @@ public interface ISO8583Service {
      * Verifies the ISO 9797-1 Retail MAC of an ISO 8583 message.
      */
     MacVerifyResponse verifyMac(MacVerifyRequest request);
+
+    /**
+     * Generates an end-of-day Dual-Message System (DMS) 1240 settlement clearing batch.
+     */
+    com.dean.iso8583.core.clearing.ClearingBatch generateClearingBatch(ClearingBatchRequest request);
+
+    /**
+     * Files a 1440 Chargeback dispute against a settled transaction.
+     */
+    com.dean.iso8583.core.clearing.ClearingRecord fileChargeback(ChargebackRequest request);
+
+    /**
+     * Parses an incoming raw batch clearing file.
+     */
+    com.dean.iso8583.core.clearing.ClearingBatch parseClearingBatch(ClearingParseRequest request);
+
+    /**
+     * Retrieves all archived clearing batches.
+     */
+    java.util.Collection<com.dean.iso8583.core.clearing.ClearingBatch> getClearingBatches();
+
+    /**
+     * Retrieves all filed chargeback records.
+     */
+    java.util.Collection<com.dean.iso8583.core.clearing.ClearingRecord> getChargebacks();
 }

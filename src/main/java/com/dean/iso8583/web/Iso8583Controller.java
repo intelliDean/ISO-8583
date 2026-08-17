@@ -163,4 +163,61 @@ public class Iso8583Controller {
     public ResponseEntity<MacVerifyResponse> verifyMac(@RequestBody MacVerifyRequest request) {
         return ResponseEntity.ok(iso8583Service.verifyMac(request));
     }
+
+    /**
+     * POST /api/iso/clearing/batch/generate
+     *
+     * <p>Generates an end-of-day Dual-Message System (DMS) 1240 settlement clearing batch
+     * with interchange fee calculation and reconciliation control totals.</p>
+     */
+    @PostMapping("/clearing/batch/generate")
+    public ResponseEntity<com.dean.iso8583.core.clearing.ClearingBatch> generateClearingBatch(
+            @RequestBody(required = false) ClearingBatchRequest request
+    ) {
+        return ResponseEntity.ok(iso8583Service.generateClearingBatch(request));
+    }
+
+    /**
+     * POST /api/iso/clearing/chargeback
+     *
+     * <p>Files a 1440 Chargeback dispute against a previously authorized or settled transaction.</p>
+     */
+    @PostMapping("/clearing/chargeback")
+    public ResponseEntity<com.dean.iso8583.core.clearing.ClearingRecord> fileChargeback(
+            @RequestBody ChargebackRequest request
+    ) {
+        return ResponseEntity.ok(iso8583Service.fileChargeback(request));
+    }
+
+    /**
+     * POST /api/iso/clearing/batch/parse
+     *
+     * <p>Parses an incoming raw batch clearing file string (Mastercard IPM or Visa BASE II format).</p>
+     */
+    @PostMapping("/clearing/batch/parse")
+    public ResponseEntity<com.dean.iso8583.core.clearing.ClearingBatch> parseClearingBatch(
+            @RequestBody ClearingParseRequest request
+    ) {
+        return ResponseEntity.ok(iso8583Service.parseClearingBatch(request));
+    }
+
+    /**
+     * GET /api/iso/clearing/batches
+     *
+     * <p>Returns all generated and archived clearing batches.</p>
+     */
+    @GetMapping("/clearing/batches")
+    public ResponseEntity<java.util.Collection<com.dean.iso8583.core.clearing.ClearingBatch>> getClearingBatches() {
+        return ResponseEntity.ok(iso8583Service.getClearingBatches());
+    }
+
+    /**
+     * GET /api/iso/clearing/chargebacks
+     *
+     * <p>Returns all filed chargeback dispute records.</p>
+     */
+    @GetMapping("/clearing/chargebacks")
+    public ResponseEntity<java.util.Collection<com.dean.iso8583.core.clearing.ClearingRecord>> getChargebacks() {
+        return ResponseEntity.ok(iso8583Service.getChargebacks());
+    }
 }

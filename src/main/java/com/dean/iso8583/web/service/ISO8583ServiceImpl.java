@@ -3,6 +3,9 @@ package com.dean.iso8583.web.service;
 import com.dean.iso8583.core.IsoPacker;
 import com.dean.iso8583.core.IsoSpec;
 import com.dean.iso8583.core.IsoUnpacker;
+import com.dean.iso8583.core.clearing.BatchClearingEngine;
+import com.dean.iso8583.core.clearing.ClearingBatch;
+import com.dean.iso8583.core.clearing.ClearingRecord;
 import com.dean.iso8583.core.crypto.CryptoKeyRegistry;
 import com.dean.iso8583.core.crypto.CryptoUtils;
 import com.dean.iso8583.core.crypto.IsoPinBlockEngine;
@@ -34,7 +37,8 @@ import java.util.Map;
  * Developer Note:
  * <p>Enterprise ISO 8583 Service Implementation.</p>
  * <p>Orchestrates message packing, unpacking, dynamic spec resolution, host simulation,
- * transaction state queries, keep-alive network heartbeat telemetry, and cryptographic operations.</p>
+ * transaction state queries, keep-alive network heartbeat telemetry, cryptographic operations,
+ * and Dual-Message System (DMS) batch clearing &amp; settlement reconciliation.</p>
  */
 @Slf4j
 @Service
@@ -46,6 +50,7 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     private final TransactionStore transactionStore;
     private final IsoEchoManager isoEchoManager;
     private final CryptoKeyRegistry cryptoKeyRegistry;
+    private final BatchClearingEngine batchClearingEngine;
 
     @Override
     public Map<Integer, IsoFieldDef> getCatalog() {
@@ -201,6 +206,37 @@ public class ISO8583ServiceImpl implements ISO8583Service {
 
         boolean valid = calculatedMac.equalsIgnoreCase(request.expectedMac().trim());
         return new MacVerifyResponse(valid, calculatedMac, valid ? "MAC valid" : "MAC mismatch");
+    }
+
+    @Override
+    public ClearingBatch generateClearingBatch(ClearingBatchRequest request) {
+        String networkId = (request != null && request.networkId() != null) ? request.networkId() : "MASTERCARD-IPM";
+        return batchClearingEngine.generateClearingBatch(networkId);
+    }
+
+    @Override
+    public ClearingRecord fileChargeback(ChargebackRequest request) {
+        return batchClearingEngine.fileChargeback(
+                request.stan(),
+                request.maskedPan(),
+                request.amountIso(),
+                request.disputeReasonCode()
+        );
+    }
+
+    @Override
+    public ClearingBatch parseClearingBatch(ClearingParseRequest request) {
+        return batchClearingEngine.parseClearingFile(request.rawBatchFile());
+    }
+
+    @Override
+    public Collection<ClearingBatch> getClearingBatches() {
+        return batchClearingEngine.getBatches();
+    }
+
+    @Override
+    public Collection<ClearingRecord> getChargebacks() {
+        return batchClearingEngine.getChargebacks();
     }
 
     private byte[] resolveKey(String keyHex, String keyId, String defaultKeyId) {
