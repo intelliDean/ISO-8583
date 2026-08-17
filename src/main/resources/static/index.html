@@ -3,235 +3,2138 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ISO 8583 Payment Protocol Studio & Simulator</title>
-    <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+    <title>ISO 8583 Enterprise Payment Engine — Control Center</title>
+    <meta name="description" content="Enterprise-grade ISO 8583 Payment Protocol Studio: message inspector, EMV BER-TLV explorer, PIN block calculator, Retail MAC engine, batch clearing dashboard, and live channel telemetry.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base:    #0a0e1a;
+            --bg-surface: #111827;
+            --bg-card:    #1a2235;
+            --bg-elevated:#1f2d42;
+            --border:     rgba(99,179,237,0.12);
+            --border-glow:rgba(99,179,237,0.35);
+            --accent-blue:  #3b82f6;
+            --accent-cyan:  #06b6d4;
+            --accent-violet:#7c3aed;
+            --accent-green: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-red:   #ef4444;
+            --text-primary: #f1f5f9;
+            --text-secondary:#94a3b8;
+            --text-muted:   #64748b;
+            --glow-blue: 0 0 20px rgba(59,130,246,0.3);
+            --glow-cyan: 0 0 20px rgba(6,182,212,0.3);
+            --glow-green: 0 0 20px rgba(16,185,129,0.3);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg-base);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ══════════════ HEADER ══════════════ */
+        .app-header {
+            background: linear-gradient(135deg, #0d1424 0%, #131d32 60%, #0f172a 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 0 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(20px);
+        }
+
+        .header-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 64px;
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            box-shadow: var(--glow-blue);
+        }
+
+        .logo-area h1 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, #fff, var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .logo-area .subtitle {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 1px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            background: rgba(16,185,129,0.1);
+            border: 1px solid rgba(16,185,129,0.25);
+            padding: 0.35rem 0.85rem;
+            border-radius: 100px;
+        }
+
+        @keyframes pulse-ring {
+            0%   { transform: scale(1); opacity: 1; }
+            100% { transform: scale(2.5); opacity: 0; }
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            position: relative;
+            display: inline-block;
+        }
+
+        .pulse-dot::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: var(--accent-green);
+            border-radius: 50%;
+            animation: pulse-ring 1.5s ease-out infinite;
+        }
+
+        /* ══════════════ LAYOUT ══════════════ */
+        .main-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 1.5rem 2rem 4rem;
+        }
+
+        /* ══════════════ NAV TABS ══════════════ */
+        .tab-nav {
+            display: flex;
+            gap: 0.25rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+
+        .tab-nav::-webkit-scrollbar { display: none; }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 500;
+            padding: 0.75rem 1.1rem;
+            cursor: pointer;
+            white-space: nowrap;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            position: relative;
+            top: 1px;
+        }
+
+        .tab-btn:hover { color: var(--text-secondary); }
+
+        .tab-btn.active {
+            color: var(--accent-cyan);
+            border-bottom-color: var(--accent-cyan);
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* ══════════════ CARDS ══════════════ */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 1.5rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .card-accent {
+            border-color: rgba(59,130,246,0.3);
+            background: linear-gradient(135deg, rgba(59,130,246,0.05), var(--bg-card));
+        }
+
+        .card-green {
+            border-color: rgba(16,185,129,0.25);
+            background: linear-gradient(135deg, rgba(16,185,129,0.04), var(--bg-card));
+        }
+
+        .card-amber {
+            border-color: rgba(245,158,11,0.25);
+            background: linear-gradient(135deg, rgba(245,158,11,0.04), var(--bg-card));
+        }
+
+        .card-red {
+            border-color: rgba(239,68,68,0.25);
+            background: linear-gradient(135deg, rgba(239,68,68,0.04), var(--bg-card));
+        }
+
+        .card-violet {
+            border-color: rgba(124,58,237,0.3);
+            background: linear-gradient(135deg, rgba(124,58,237,0.05), var(--bg-card));
+        }
+
+        .card h2 {
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin-bottom: 0.3rem;
+        }
+
+        .card h3 {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+
+        .card-desc {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            margin-bottom: 1.25rem;
+            line-height: 1.6;
+        }
+
+        /* ══════════════ GRID LAYOUTS ══════════════ */
+        .grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+        .grid-3col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; }
+
+        @media (max-width: 1100px) { .grid-2col, .grid-3col { grid-template-columns: 1fr; } }
+
+        /* ══════════════ FORMS ══════════════ */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.4rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+            padding: 0.6rem 0.85rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            outline: none;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+        }
+
+        .form-group select option { background: var(--bg-card); }
+        .form-group textarea { resize: vertical; font-family: 'Fira Code', monospace; font-size: 0.8rem; }
+
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+        .form-full { grid-column: 1 / -1; }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            margin-bottom: 1rem;
+        }
+
+        .checkbox-group label {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent-blue);
+            cursor: pointer;
+        }
+
+        /* ══════════════ BUTTONS ══════════════ */
+        .btn {
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.82rem;
+            font-weight: 600;
+            padding: 0.6rem 1.25rem;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .btn:active { transform: scale(0.97); }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-blue), #2563eb);
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(59,130,246,0.35);
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 6px 20px rgba(59,130,246,0.5);
+            transform: translateY(-1px);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, var(--accent-green), #059669);
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(16,185,129,0.3);
+        }
+
+        .btn-success:hover { box-shadow: 0 6px 20px rgba(16,185,129,0.45); transform: translateY(-1px); }
+
+        .btn-amber {
+            background: linear-gradient(135deg, var(--accent-amber), #d97706);
+            color: #000;
+            box-shadow: 0 4px 14px rgba(245,158,11,0.3);
+        }
+
+        .btn-violet {
+            background: linear-gradient(135deg, var(--accent-violet), #5b21b6);
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(124,58,237,0.35);
+        }
+
+        .btn-secondary {
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(99,179,237,0.08);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        .btn-sm { padding: 0.4rem 0.85rem; font-size: 0.75rem; }
+
+        .button-group { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
+
+        .preset-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+
+        .preset-label { font-size: 0.75rem; color: var(--text-muted); }
+
+        /* ══════════════ CODE / MONOSPACE ══════════════ */
+        .code-font { font-family: 'Fira Code', monospace; }
+
+        .code-block {
+            background: #0d1117;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.78rem;
+            line-height: 1.7;
+            color: #e2e8f0;
+            word-break: break-all;
+            min-height: 60px;
+        }
+
+        /* ══════════════ TABLE ══════════════ */
+        .table-responsive { overflow-x: auto; }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+
+        .data-table thead tr {
+            background: rgba(59,130,246,0.08);
+            border-bottom: 1px solid var(--border-glow);
+        }
+
+        .data-table th {
+            padding: 0.7rem 0.9rem;
+            text-align: left;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+        }
+
+        .data-table tbody tr {
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            transition: background 0.15s;
+        }
+
+        .data-table tbody tr:hover { background: rgba(59,130,246,0.04); }
+
+        .data-table td {
+            padding: 0.65rem 0.9rem;
+            color: var(--text-secondary);
+            vertical-align: middle;
+        }
+
+        .data-table td:first-child {
+            font-family: 'Fira Code', monospace;
+            font-weight: 600;
+            color: var(--accent-cyan);
+        }
+
+        .data-table td .field-val {
+            font-family: 'Fira Code', monospace;
+            background: var(--bg-elevated);
+            padding: 0.2rem 0.5rem;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            color: #e2e8f0;
+        }
+
+        /* ══════════════ BADGES & TAGS ══════════════ */
+        .badge {
+            display: inline-block;
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 0.2rem 0.55rem;
+            border-radius: 100px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .badge-blue   { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
+        .badge-green  { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+        .badge-amber  { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
+        .badge-red    { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+        .badge-violet { background: rgba(124,58,237,0.15); color: #a78bfa; border: 1px solid rgba(124,58,237,0.3); }
+        .badge-cyan   { background: rgba(6,182,212,0.15);  color: #22d3ee; border: 1px solid rgba(6,182,212,0.3); }
+
+        /* ══════════════ MESSAGE SUMMARY BOX ══════════════ */
+        .summary-box {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .summary-item {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 0.85rem;
+        }
+
+        .sum-label {
+            display: block;
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 0.35rem;
+        }
+
+        .sum-val {
+            display: block;
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .highlight { color: var(--accent-cyan); }
+
+        /* ══════════════ BITMAP GRID ══════════════ */
+        .bitmap-grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin: 1rem 0; }
+
+        @media (max-width: 900px) { .bitmap-grid-container { grid-template-columns: 1fr; } }
+
+        .bitmap-block h3 { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem; }
+
+        .bitmap-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 4px;
+        }
+
+        .bit-cell {
+            aspect-ratio: 1;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.15s;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            font-size: 0.55rem;
+            font-weight: 600;
+            font-family: 'Fira Code', monospace;
+            color: var(--text-muted);
+            user-select: none;
+        }
+
+        .bit-cell:hover { transform: scale(1.08); border-color: var(--accent-cyan); color: var(--text-primary); z-index: 1; }
+
+        .bit-cell.active {
+            background: linear-gradient(135deg, rgba(59,130,246,0.25), rgba(6,182,212,0.15));
+            border-color: var(--accent-blue);
+            color: var(--accent-cyan);
+            box-shadow: 0 0 8px rgba(59,130,246,0.25);
+        }
+
+        .bit-cell.active:hover { box-shadow: 0 0 16px rgba(59,130,246,0.45); }
+
+        .bit-num { font-size: 0.5rem; opacity: 0.6; }
+
+        .bit-hover-card {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-glow);
+            border-radius: 10px;
+            padding: 1rem;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            margin-top: 1rem;
+            min-height: 60px;
+            line-height: 1.6;
+            transition: all 0.2s;
+        }
+
+        /* ══════════════ EMV TLV TREE ══════════════ */
+        .tlv-tree { padding: 0.5rem 0; }
+
+        .tlv-tag {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 0.5rem;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+
+        .tlv-tag:hover { border-color: var(--border-glow); }
+
+        .tlv-tag.critical { border-color: rgba(245,158,11,0.4); }
+
+        .tlv-tag-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.7rem 1rem;
+            background: var(--bg-elevated);
+            cursor: pointer;
+        }
+
+        .tlv-tag-id {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--accent-cyan);
+            min-width: 50px;
+        }
+
+        .tlv-tag-name {
+            flex: 1;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .tlv-tag-len {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+
+        .tlv-tag-val {
+            padding: 0.6rem 1rem;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.78rem;
+            color: #a5f3fc;
+            background: rgba(6,182,212,0.04);
+            border-top: 1px solid var(--border);
+            word-break: break-all;
+        }
+
+        .arqc-highlight { color: var(--accent-amber); font-weight: 600; }
+
+        /* ══════════════ TELEMETRY / ECHO ══════════════ */
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 0.75rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .metric-card {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .metric-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.4rem; }
+
+        .metric-val { font-size: 1.6rem; font-weight: 800; font-family: 'Fira Code', monospace; }
+        .metric-val.green  { color: var(--accent-green);  text-shadow: var(--glow-green); }
+        .metric-val.blue   { color: var(--accent-blue);   text-shadow: var(--glow-blue); }
+        .metric-val.amber  { color: var(--accent-amber); }
+        .metric-val.red    { color: var(--accent-red); }
+        .metric-unit { font-size: 0.65rem; color: var(--text-muted); margin-top: 0.2rem; }
+
+        /* ══════════════ TRANSACTION LIST ══════════════ */
+        .txn-row {
+            display: grid;
+            grid-template-columns: 80px 1fr 120px 100px 100px;
+            gap: 0.75rem;
+            align-items: center;
+            padding: 0.75rem 0.9rem;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            font-size: 0.8rem;
+            transition: background 0.15s;
+        }
+
+        .txn-row:hover { background: rgba(59,130,246,0.04); }
+
+        .txn-row-header {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .state-chip {
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 0.25rem 0.6rem;
+            border-radius: 100px;
+            text-transform: uppercase;
+        }
+
+        .state-AUTHORISED      { background: rgba(16,185,129,0.15); color: var(--accent-green); }
+        .state-REVERSED        { background: rgba(239,68,68,0.15);  color: var(--accent-red); }
+        .state-PARTIALLY_REVERSED { background: rgba(245,158,11,0.15); color: var(--accent-amber); }
+        .state-DECLINED        { background: rgba(239,68,68,0.15);  color: #f87171; }
+        .state-REVERSAL_PENDING { background: rgba(124,58,237,0.15); color: #a78bfa; }
+
+        /* ══════════════ CRYPTO PANEL ══════════════ */
+        .crypto-result {
+            background: #0d1117;
+            border: 1px solid rgba(124,58,237,0.3);
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.82rem;
+            line-height: 1.8;
+            color: #e2e8f0;
+            margin-top: 0.75rem;
+            min-height: 60px;
+        }
+
+        .result-label {
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+        }
+
+        .result-val {
+            color: var(--accent-cyan);
+            font-weight: 500;
+        }
+
+        .result-ok  { color: var(--accent-green); }
+        .result-fail { color: var(--accent-red); }
+
+        /* ══════════════ CLEARING DASHBOARD ══════════════ */
+        .clearing-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-card {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.1rem;
+        }
+
+        .stat-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.35rem; }
+        .stat-val { font-size: 1.25rem; font-weight: 800; font-family: 'Fira Code', monospace; }
+        .stat-sub { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem; }
+
+        /* ══════════════ TOAST ══════════════ */
+        #toast {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-glow);
+            border-radius: 10px;
+            padding: 0.75rem 1.25rem;
+            font-size: 0.82rem;
+            color: var(--text-primary);
+            z-index: 9999;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s;
+            max-width: 340px;
+            pointer-events: none;
+        }
+
+        #toast.show { opacity: 1; transform: translateY(0); }
+
+        /* ══════════════ SIMULATION BOX ══════════════ */
+        .sim-box {
+            background: #0d1117;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+            font-size: 0.8rem;
+            line-height: 1.8;
+            min-height: 80px;
+        }
+
+        .sim-box.empty { color: var(--text-muted); font-style: italic; }
+
+        .sim-box .row { display: flex; gap: 1rem; border-bottom: 1px solid rgba(255,255,255,0.04); padding: 0.3rem 0; }
+        .sim-box .row:last-child { border-bottom: none; }
+        .sim-box .row .key { color: var(--text-muted); min-width: 140px; font-size: 0.75rem; }
+        .sim-box .row .val { font-family: 'Fira Code', monospace; color: var(--text-primary); word-break: break-all; }
+
+        /* ══════════════ SPINNER ══════════════ */
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.2); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+
+        /* ══════════════ GUIDE SECTION ══════════════ */
+        .guide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
+
+        .guide-card {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+
+        .guide-card h3 { font-size: 0.88rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--accent-cyan); }
+        .guide-card p, .guide-card li { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.65; }
+        .guide-card ul { padding-left: 1.1rem; }
+        .guide-card code { background: var(--bg-card); padding: 0.1rem 0.4rem; border-radius: 4px; font-family: 'Fira Code', monospace; font-size: 0.75rem; color: var(--accent-cyan); }
+
+        .guide-num {
+            width: 28px;
+            height: 28px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 800;
+            color: #fff;
+            margin-bottom: 0.75rem;
+        }
+
+        /* ══════════════ ALERT BOX ══════════════ */
+        .alert {
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .alert-info    { background: rgba(59,130,246,0.1);  border: 1px solid rgba(59,130,246,0.3);  color: #93c5fd; }
+        .alert-success { background: rgba(16,185,129,0.1);  border: 1px solid rgba(16,185,129,0.3);  color: #6ee7b7; }
+        .alert-warn    { background: rgba(245,158,11,0.1);  border: 1px solid rgba(245,158,11,0.3);  color: #fcd34d; }
+        .alert-error   { background: rgba(239,68,68,0.1);   border: 1px solid rgba(239,68,68,0.3);   color: #fca5a5; }
+
+        /* section label above tabs */
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .section-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+        }
+
+        .section-header h2 { font-size: 1.1rem; font-weight: 700; }
+        .section-header p  { font-size: 0.77rem; color: var(--text-muted); }
+
+        .bitmap-block .sub-text { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; }
+    </style>
 </head>
 <body>
-    <header class="app-header">
-        <div class="header-container">
-            <div class="logo-area">
-                <div class="logo-icon">💳</div>
-                <div>
-                    <h1>Dean ISO 8583</h1>
-                    <p class="subtitle">Financial Transaction Card Message Parser, Encoder & Host Simulator</p>
-                </div>
-            </div>
-            <div class="status-badge">
-                <span class="pulse-dot"></span> TCP Host Simulator: Port 8583
+
+<!-- ══════ HEADER ══════ -->
+<header class="app-header">
+    <div class="header-container">
+        <div class="logo-area">
+            <div class="logo-icon">💳</div>
+            <div>
+                <h1>ISO 8583 Enterprise Engine</h1>
+                <p class="subtitle">Financial Transaction Protocol Studio — by Dean</p>
             </div>
         </div>
-    </header>
+        <div class="header-right">
+            <div class="status-badge">
+                <span class="pulse-dot"></span> TCP Host: Port 8583 &nbsp;|&nbsp; REST API: Port 8080
+            </div>
+        </div>
+    </div>
+</header>
 
-    <main class="main-container">
-        <!-- Navigation Tabs -->
-        <nav class="tab-nav">
-            <button class="tab-btn active" onclick="switchTab('inspector')">🔍 Message Inspector & Unpacker</button>
-            <button class="tab-btn" onclick="switchTab('builder')">⚡ Message Builder & TCP Simulator</button>
-            <button class="tab-btn" onclick="switchTab('bitmap')">🔲 Visual Bitmap Matrix</button>
-            <button class="tab-btn" onclick="switchTab('guide')">📚 ISO 8583 Masterclass</button>
-        </nav>
+<main class="main-container">
 
-        <!-- Tab 1: Inspector -->
-        <section id="tab-inspector" class="tab-content active">
+    <!-- NAV TABS -->
+    <nav class="tab-nav" role="tablist">
+        <button class="tab-btn active" id="tab-btn-inspector"  onclick="switchTab('inspector')"  role="tab">🔍 Message Inspector</button>
+        <button class="tab-btn"        id="tab-btn-builder"    onclick="switchTab('builder')"    role="tab">⚡ Message Builder</button>
+        <button class="tab-btn"        id="tab-btn-bitmap"     onclick="switchTab('bitmap')"     role="tab">🔲 Bitmap Explorer</button>
+        <button class="tab-btn"        id="tab-btn-emv"        onclick="switchTab('emv')"        role="tab">💡 EMV BER-TLV</button>
+        <button class="tab-btn"        id="tab-btn-crypto"     onclick="switchTab('crypto')"     role="tab">🔐 Crypto Lab</button>
+        <button class="tab-btn"        id="tab-btn-clearing"   onclick="switchTab('clearing')"   role="tab">🏦 Clearing & Settlement</button>
+        <button class="tab-btn"        id="tab-btn-telemetry"  onclick="switchTab('telemetry')"  onclick="loadTelemetry()" role="tab">📡 Network Telemetry</button>
+        <button class="tab-btn"        id="tab-btn-guide"      onclick="switchTab('guide')"      role="tab">📚 Masterclass</button>
+    </nav>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- TAB 1: MESSAGE INSPECTOR                       -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section id="tab-inspector" class="tab-content active">
+        <div class="card">
+            <div class="section-header">
+                <div class="section-icon" style="background: linear-gradient(135deg,#3b82f6,#06b6d4)">🔍</div>
+                <div>
+                    <h2>Raw Message Inspector & Unpacker</h2>
+                    <p>Disassemble any ISO 8583 payload — header, MTI, bitmaps, and all data elements</p>
+                </div>
+            </div>
+
+            <div class="preset-bar">
+                <span class="preset-label">Presets:</span>
+                <button class="btn btn-secondary btn-sm" onclick="loadPreset('financial')">0200 Financial</button>
+                <button class="btn btn-secondary btn-sm" onclick="loadPreset('echo')">0800 Echo</button>
+                <button class="btn btn-secondary btn-sm" onclick="loadPreset('reversal')">0400 Reversal</button>
+                <button class="btn btn-secondary btn-sm" onclick="loadPreset('emv_auth')">0200 + EMV</button>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="inspectSpecSelect">Network Packager Dialect:</label>
+                    <select id="inspectSpecSelect">
+                        <option value="iso8583-1987">ISO 8583:1987 Standard</option>
+                        <option value="visa-sms">Visa SMS (Single Message System)</option>
+                        <option value="mastercard-ipm">Mastercard IPM</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="rawInput">Raw ISO 8583 Payload:</label>
+                <textarea id="rawInput" rows="3" placeholder="e.g. 600000000002007020000000C0800016453201558899123400000000000000002550..."></textarea>
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="hasHeader" checked>
+                <label for="hasHeader">Payload includes 10-char TPDU Transport Header</label>
+            </div>
+
+            <button class="btn btn-primary" onclick="unpackPayload()">🔍 Unpack &amp; Disassemble</button>
+        </div>
+
+        <div id="inspectionResult" class="hidden">
+            <div class="card card-accent">
+                <h3>Message Summary</h3>
+                <div class="summary-box">
+                    <div class="summary-item">
+                        <span class="sum-label">TPDU Header</span>
+                        <span class="sum-val code-font" id="resHeader">—</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="sum-label">MTI Code</span>
+                        <span class="sum-val code-font highlight" id="resMti">—</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="sum-label">MTI Description</span>
+                        <span class="sum-val" id="resMtiDesc">—</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="sum-label">Primary Bitmap</span>
+                        <span class="sum-val code-font" id="resPrimaryBitmap">—</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="sum-label">Secondary Bitmap</span>
+                        <span class="sum-val code-font" id="resSecondaryBitmap">None</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="sum-label">Active Fields</span>
+                        <span class="sum-val" id="resFieldCount">—</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="card">
-                <h2>Raw Message Inspector</h2>
-                <p class="card-desc">Paste an ISO 8583 raw string or select a preset to analyze its header, MTI, bitmap, and fields.</p>
-                
-                <div class="preset-bar">
-                    <span class="preset-label">Preset Samples:</span>
-                    <button class="btn btn-secondary btn-sm" onclick="loadPreset('financial')">0200 Financial Request</button>
-                    <button class="btn btn-secondary btn-sm" onclick="loadPreset('echo')">0800 Network Echo Test</button>
-                    <button class="btn btn-secondary btn-sm" onclick="loadPreset('reversal')">0400 Reversal Request</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+                    <h3>Data Elements (DE)</h3>
+                    <button class="btn btn-secondary btn-sm" onclick="exportInspectedToCrypto()">Export to Crypto Lab →</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>DE #</th>
+                                <th>Field Name</th>
+                                <th>Encoding</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fieldsTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- TAB 2: BUILDER                                 -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section id="tab-builder" class="tab-content">
+        <div class="grid-2col">
+            <div class="card">
+                <div class="section-header">
+                    <div class="section-icon" style="background: linear-gradient(135deg,#10b981,#059669)">⚡</div>
+                    <div>
+                        <h2>Compose ISO 8583 Message</h2>
+                        <p>Build and transmit any message type to the TCP Host Simulator</p>
+                    </div>
                 </div>
 
-                <div class="form-row" style="margin-bottom: 1.25rem;">
-                    <div class="form-group" style="flex: 1; margin-bottom: 0;">
-                        <label for="inspectSpecSelect">Network Packager Dialect:</label>
-                        <select id="inspectSpecSelect" onchange="unpackPayload()">
-                            <option value="iso8583-1987">ISO 8583:1987 Standard</option>
-                            <option value="visa-sms">Visa SMS (Single Message System)</option>
-                            <option value="mastercard-ipm">Mastercard IPM (Integrated Processing Mode)</option>
-                        </select>
+                <form id="builderForm" onsubmit="event.preventDefault(); packAndSimulate();">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="bHeader">TPDU Header (5 bytes / 10 hex):</label>
+                            <input type="text" id="bHeader" value="6000000000" maxlength="10">
+                        </div>
+                        <div class="form-group">
+                            <label for="bMti">MTI Code:</label>
+                            <select id="bMti" onchange="onMtiChange()">
+                                <option value="0200">0200 — Financial Transaction Request</option>
+                                <option value="0800">0800 — Network Management Request</option>
+                                <option value="0100">0100 — Authorization Request</option>
+                                <option value="0400">0400 — Reversal Request</option>
+                            </select>
+                        </div>
                     </div>
+
+                    <div id="builderFields"></div>
+
+                    <div class="button-group">
+                        <button type="button" class="btn btn-secondary" onclick="generatePackedMessage()">📦 Pack Message</button>
+                        <button type="submit" class="btn btn-success">⚡ Send to TCP Host Simulator</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card">
+                <h2>Live Payload &amp; TCP Trace</h2>
+
+                <div style="margin-bottom:1.25rem;">
+                    <h3 style="margin-bottom:0.4rem; color: var(--text-secondary); font-size:0.8rem; text-transform:uppercase; letter-spacing:0.05em;">Generated Packed Stream</h3>
+                    <div id="packedOutput" class="code-block">Click "Pack Message" or "Send to TCP Simulator" to see output</div>
+                    <div id="bitmapInfo" style="margin-top:0.5rem; font-size:0.75rem; color:var(--text-muted);"></div>
+                </div>
+
+                <div>
+                    <h3 style="margin-bottom:0.4rem; color: var(--text-secondary); font-size:0.8rem; text-transform:uppercase; letter-spacing:0.05em;">TCP Simulator Response</h3>
+                    <div id="simResult" class="sim-box empty">No simulation executed yet</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- TAB 3: BITMAP EXPLORER                         -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section id="tab-bitmap" class="tab-content">
+        <div class="card">
+            <div class="section-header">
+                <div class="section-icon" style="background: linear-gradient(135deg,#7c3aed,#5b21b6)">🔲</div>
+                <div>
+                    <h2>Interactive 128-Bit Bitmap Explorer</h2>
+                    <p>ISO 8583 uses bitwise flags in 64-bit blocks to signal which data elements are present</p>
+                </div>
+            </div>
+
+            <div class="alert alert-info">ℹ️ Each cell represents one bit. Click to toggle. <strong>Bit 1</strong> activates the Secondary Bitmap (Bits 65–128).</div>
+
+            <div class="bitmap-grid-container">
+                <div class="bitmap-block">
+                    <h3>Primary Bitmap — Bits 1–64</h3>
+                    <p class="sub-text">Hex: <span id="primaryHexVal" class="code-font highlight">0000000000000000</span></p>
+                    <div id="gridPrimary" class="bitmap-grid"></div>
+                </div>
+                <div class="bitmap-block">
+                    <h3>Secondary Bitmap — Bits 65–128</h3>
+                    <p class="sub-text">Hex: <span id="secondaryHexVal" class="code-font">Inactive</span></p>
+                    <div id="gridSecondary" class="bitmap-grid"></div>
+                </div>
+            </div>
+
+            <div id="bitHoverInfo" class="bit-hover-card">
+                Hover or click any bit cell above to inspect its mapped ISO Data Element field definition.
+            </div>
+
+            <div class="button-group" style="margin-top:1rem;">
+                <button class="btn btn-secondary" onclick="clearBitmap()">Clear All</button>
+                <button class="btn btn-secondary" onclick="loadBitmapFromInput()">Load from Inspector</button>
+                <button class="btn btn-primary" onclick="copyBitmapHex()">📋 Copy Hex</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- TAB 4: EMV BER-TLV EXPLORER                   -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section id="tab-emv" class="tab-content">
+        <div class="grid-2col">
+            <div class="card">
+                <div class="section-header">
+                    <div class="section-icon" style="background: linear-gradient(135deg,#f59e0b,#d97706)">💡</div>
+                    <div>
+                        <h2>EMV BER-TLV Chip Card Parser</h2>
+                        <p>Parse DE 55 ICC data from EMV chip and contactless transactions</p>
+                    </div>
+                </div>
+
+                <div class="alert alert-info">ℹ️ <strong>DE 55</strong> carries EMV chip card data as BER-TLV encoded bytes, including ARQC (9F26), ATC (9F36), and Card Risk Management data.</div>
+
+                <div class="preset-bar">
+                    <span class="preset-label">Samples:</span>
+                    <button class="btn btn-secondary btn-sm" onclick="loadEmvPreset('contact')">Visa Contact</button>
+                    <button class="btn btn-secondary btn-sm" onclick="loadEmvPreset('contactless')">Mastercard Contactless</button>
                 </div>
 
                 <div class="form-group">
-                    <label for="rawInput">Raw Payload String:</label>
-                    <textarea id="rawInput" rows="3" placeholder="e.g. 600000000002007020000000C0800016453201558899123400000000000000002550000123TERM0001MERCHANT1234567840"></textarea>
+                    <label for="emvInput">DE 55 Hex String (BER-TLV encoded):</label>
+                    <textarea id="emvInput" rows="4" placeholder="e.g. 9F2608A1B2C3D4E5F6079F36020123..."></textarea>
                 </div>
 
-                <div class="checkbox-group">
-                    <input type="checkbox" id="hasHeader" checked>
-                    <label for="hasHeader">Payload includes 10-char TPDU Transport Header</label>
-                </div>
-
-                <button class="btn btn-primary" onclick="unpackPayload()">Unpack & Disassemble</button>
+                <button class="btn btn-amber" onclick="parseEmv()">⚡ Parse EMV TLV Stream</button>
             </div>
 
-            <!-- Inspection Results -->
-            <div id="inspectionResult" class="results-grid hidden">
-                <div class="card card-accent">
-                    <h3>Message Summary</h3>
-                    <div class="summary-box">
-                        <div class="summary-item">
-                            <span class="sum-label">TPDU Header</span>
-                            <span class="sum-val code-font" id="resHeader">-</span>
-                        </div>
-                        <div class="summary-item">
-                            <span class="sum-label">MTI Code</span>
-                            <span class="sum-val code-font highlight" id="resMti">-</span>
-                        </div>
-                        <div class="summary-item">
-                            <span class="sum-label">MTI Description</span>
-                            <span class="sum-val" id="resMtiDesc">-</span>
-                        </div>
-                        <div class="summary-item">
-                            <span class="sum-label">Primary Bitmap</span>
-                            <span class="sum-val code-font" id="resPrimaryBitmap">-</span>
-                        </div>
-                        <div class="summary-item">
-                            <span class="sum-label">Secondary Bitmap</span>
-                            <span class="sum-val code-font" id="resSecondaryBitmap">None</span>
-                        </div>
+            <div class="card card-amber">
+                <h3>Fraud Signal Indicators</h3>
+                <div class="telemetry-grid" style="margin-top:0.5rem;">
+                    <div class="metric-card">
+                        <div class="metric-label">ARQC Present</div>
+                        <div class="metric-val" id="emvArqcPresent" style="font-size:1rem;">—</div>
+                        <div class="metric-unit">Tag 9F26</div>
                     </div>
-                </div>
-
-                <div class="card">
-                    <h3>Extracted Data Elements (DE)</h3>
-                    <div class="table-responsive">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Field #</th>
-                                    <th>Field Name</th>
-                                    <th>Encoding Type</th>
-                                    <th>Decoded Value</th>
-                                </tr>
-                            </thead>
-                            <tbody id="fieldsTableBody">
-                                <!-- Populated dynamically -->
-                            </tbody>
-                        </table>
+                    <div class="metric-card">
+                        <div class="metric-label">ATC Value</div>
+                        <div class="metric-val blue" id="emvAtcDecimal" style="font-size:1.3rem;">—</div>
+                        <div class="metric-unit">Tag 9F36</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">ARQC Hex</div>
+                        <div id="emvArqcHex" style="font-family:'Fira Code',monospace;font-size:0.72rem;color:#22d3ee;margin-top:0.3rem;word-break:break-all;">—</div>
+                        <div class="metric-unit">Cryptogram</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Total Tags</div>
+                        <div class="metric-val green" id="emvTagCount" style="font-size:1.3rem;">—</div>
+                        <div class="metric-unit">Parsed</div>
                     </div>
                 </div>
             </div>
-        </section>
+        </div>
 
-        <!-- Tab 2: Builder & TCP Simulator -->
-        <section id="tab-builder" class="tab-content">
-            <div class="grid-2col">
-                <div class="card">
-                    <h2>Compose ISO 8583 Message</h2>
-                    <form id="builderForm" onsubmit="event.preventDefault(); packAndSimulate();">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="bHeader">TPDU Header:</label>
-                                <input type="text" id="bHeader" value="6000000000">
-                            </div>
-                            <div class="form-group">
-                                <label for="bMti">MTI Code:</label>
-                                <select id="bMti" onchange="onMtiChange()">
-                                    <option value="0200">0200 - Financial Transaction Request</option>
-                                    <option value="0800">0800 - Network Management Request</option>
-                                    <option value="0100">0100 - Authorization Request</option>
-                                    <option value="0400">0400 - Reversal Request</option>
-                                </select>
-                            </div>
-                        </div>
+        <div id="emvResult" class="card hidden">
+            <h3>Decoded TLV Tree</h3>
+            <div id="emvTlvTree" class="tlv-tree"></div>
+        </div>
+    </section>
 
-                        <div id="builderFields">
-                            <!-- Fields populated by JS based on MTI -->
-                        </div>
-
-                        <div class="button-group">
-                            <button type="button" class="btn btn-secondary" onclick="generatePackedMessage()">Pack Message</button>
-                            <button type="submit" class="btn btn-success">⚡ Pack & Send to TCP Host Simulator</button>
-                        </div>
-                    </form>
-                </div>
-
-                <div class="card">
-                    <h2>Live Payload & TCP Trace</h2>
-                    
-                    <div class="trace-section">
-                        <h4>Generated Packed Stream:</h4>
-                        <div id="packedOutput" class="code-block">Click "Pack Message" or "Send to TCP Simulator" to see output</div>
-                        <div id="bitmapInfo" class="bitmap-summary"></div>
-                    </div>
-
-                    <div class="trace-section">
-                        <h4>TCP Simulator Response:</h4>
-                        <div id="simResult" class="sim-box empty">No simulation executed yet</div>
-                    </div>
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- TAB 5: CRYPTO LAB                              -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section id="tab-crypto" class="tab-content">
+        <div class="card card-violet">
+            <div class="section-header">
+                <div class="section-icon" style="background:linear-gradient(135deg,#7c3aed,#5b21b6)">🔐</div>
+                <div>
+                    <h2>Cryptography Lab — ISO 9564 PIN &amp; ISO 9797-1 Retail MAC</h2>
+                    <p>Encode, translate, and verify PIN blocks and message authentication codes</p>
                 </div>
             </div>
-        </section>
+        </div>
 
-        <!-- Tab 3: Visual Bitmap Matrix -->
-        <section id="tab-bitmap" class="tab-content">
+        <div class="grid-2col">
+            <!-- PIN Block -->
             <div class="card">
-                <h2>Interactive 128-Bit Bitmap Inspector</h2>
-                <p class="card-desc">ISO 8583 uses bitwise flags in 64-bit blocks to signal which data elements are present in the payload.</p>
-                
-                <div class="bitmap-grid-container">
-                    <div class="bitmap-block">
-                        <h3>Primary Bitmap (Bits 1 - 64)</h3>
-                        <p class="sub-text">Hex: <span id="primaryHexVal" class="code-font highlight">0000000000000000</span></p>
-                        <div id="gridPrimary" class="bitmap-grid"></div>
+                <h3>ISO 9564 PIN Block Encoder</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="pinInput">PIN (4-12 digits):</label>
+                        <input type="text" id="pinInput" placeholder="1234" maxlength="12">
                     </div>
-
-                    <div class="bitmap-block">
-                        <h3>Secondary Bitmap (Bits 65 - 128)</h3>
-                        <p class="sub-text">Hex: <span id="secondaryHexVal" class="code-font">None</span></p>
-                        <div id="gridSecondary" class="bitmap-grid"></div>
+                    <div class="form-group">
+                        <label for="panInput">PAN (card number):</label>
+                        <input type="text" id="panInput" placeholder="4532015588991234">
                     </div>
                 </div>
-
-                <div id="bitHoverInfo" class="bit-hover-card">
-                    Hover or click any bit cell above to inspect its mapped ISO Data Element field definition.
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="pinFormat">PIN Block Format:</label>
+                        <select id="pinFormat">
+                            <option value="FORMAT_0">Format 0 — ANSI X9.8 (PAN XOR)</option>
+                            <option value="FORMAT_1">Format 1 — ISO-1 (Transaction Independent)</option>
+                            <option value="FORMAT_3">Format 3 — ISO-3 (Random + PAN XOR)</option>
+                            <option value="FORMAT_4">Format 4 — ISO-4 (AES 128-bit)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="pinKeyHex">Zone Encryption Key (ZPK) hex (optional):</label>
+                        <input type="text" id="pinKeyHex" placeholder="Leave blank to use default ZPK" style="font-family:'Fira Code',monospace; font-size:0.75rem;">
+                    </div>
                 </div>
+                <button class="btn btn-violet" onclick="encodePin()">🔐 Encode &amp; Encrypt PIN Block</button>
+                <div id="pinEncodeResult" class="crypto-result" style="display:none;"></div>
             </div>
-        </section>
 
-        <!-- Tab 4: Guide -->
-        <section id="tab-guide" class="tab-content">
+            <!-- MAC Generator -->
             <div class="card">
-                <h2>ISO 8583 Core Concepts & Spec Reference</h2>
-                <div class="guide-grid">
-                    <div class="guide-card">
-                        <div class="guide-num">1</div>
-                        <h3>MTI (Message Type Identifier)</h3>
-                        <p>The 4-digit MTI defines the purpose of the message:</p>
-                        <ul>
-                            <li><strong>Pos 1 (Version):</strong> <code>0</code>=1987, <code>1</code>=1993, <code>2</code>=2003</li>
-                            <li><strong>Pos 2 (Class):</strong> <code>1</code>=Auth, <code>2</code>=Financial, <code>4</code>=Reversal, <code>8</code>=Network</li>
-                            <li><strong>Pos 3 (Function):</strong> <code>0</code>=Request, <code>1</code>=Response, <code>2</code>=Advice</li>
-                            <li><strong>Pos 4 (Originator):</strong> <code>0</code>=Acquirer, <code>1</code>=Acquirer Repeat, <code>2</code>=Issuer</li>
-                        </ul>
-                    </div>
+                <h3>ISO 9797-1 Retail MAC Calculator</h3>
+                <div class="form-group">
+                    <label for="macPayload">ISO 8583 Message Payload:</label>
+                    <textarea id="macPayload" rows="3" placeholder="Raw ISO 8583 payload string (DE 64/128 will be stripped before MAC calculation)"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="macKeyHex">Double-Length MAC Key hex (optional):</label>
+                    <input type="text" id="macKeyHex" placeholder="16-byte hex key (leave blank for DEFAULT_MAK)" style="font-family:'Fira Code',monospace; font-size:0.75rem;">
+                </div>
+                <div class="button-group">
+                    <button class="btn btn-violet" onclick="generateMac()">🔏 Calculate MAC</button>
+                    <button class="btn btn-secondary" onclick="showMacVerifyPanel()">✅ Verify MAC</button>
+                </div>
+                <div id="macResult" class="crypto-result" style="display:none;"></div>
 
-                    <div class="guide-card">
-                        <div class="guide-num">2</div>
-                        <h3>Bitmaps & Field Flags</h3>
-                        <p>The Primary Bitmap (16 hex chars / 64 bits) acts as an index. Bit 1 indicates whether a Secondary Bitmap (bits 65-128) is attached.</p>
-                        <p>Bit 3 = 1 means DE 3 (Processing Code) is included.</p>
+                <!-- MAC verify sub-panel -->
+                <div id="macVerifyPanel" style="display:none; margin-top:1rem; border-top:1px solid var(--border); padding-top:1rem;">
+                    <div class="form-group">
+                        <label for="macExpected">Expected MAC (16 hex chars — DE 64 value):</label>
+                        <input type="text" id="macExpected" placeholder="e.g. A1B2C3D4E5F60708" style="font-family:'Fira Code',monospace;">
                     </div>
-
-                    <div class="guide-card">
-                        <div class="guide-num">3</div>
-                        <h3>Data Encodings</h3>
-                        <ul>
-                            <li><strong>FIXED:</strong> Fixed length string (e.g. DE 3 is 6 digits: <code>000000</code>).</li>
-                            <li><strong>LLVAR:</strong> 2-digit length prefix + value (e.g. DE 2 PAN <code>164532015588991234</code>).</li>
-                            <li><strong>LLLVAR:</strong> 3-digit length prefix + value (e.g. DE 48 Private Data <code>012Hello World!</code>).</li>
-                        </ul>
-                    </div>
+                    <button class="btn btn-success btn-sm" onclick="verifyMac()">✅ Verify</button>
+                    <div id="macVerifyResult" class="crypto-result" style="display:none; margin-top:0.75rem;"></div>
                 </div>
             </div>
-        </section>
-    </main>
+        </div>
 
-    <script src="app.js"></script>
+        <!-- PIN Translation -->
+        <div class="card card-violet">
+            <h3>Cross-Zone PIN Block Translation (Acquirer → Issuer)</h3>
+            <p class="card-desc">Translates an encrypted PIN block across different key zones or formats without exposing the clear PIN.</p>
+            <div class="form-row-3">
+                <div class="form-group">
+                    <label for="transBlockHex">Encrypted PIN Block (DE 52) hex:</label>
+                    <input type="text" id="transBlockHex" placeholder="16 hex chars" style="font-family:'Fira Code',monospace;">
+                </div>
+                <div class="form-group">
+                    <label for="transSrcPan">Source PAN:</label>
+                    <input type="text" id="transSrcPan" placeholder="4532015588991234">
+                </div>
+                <div class="form-group">
+                    <label for="transSrcFormat">Source Format:</label>
+                    <select id="transSrcFormat">
+                        <option value="FORMAT_0">Format 0 — ISO-0</option>
+                        <option value="FORMAT_1">Format 1 — ISO-1</option>
+                        <option value="FORMAT_3">Format 3 — ISO-3</option>
+                        <option value="FORMAT_4">Format 4 — ISO-4 AES</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="transDstFormat">Destination Format:</label>
+                    <select id="transDstFormat">
+                        <option value="FORMAT_0">Format 0 — ISO-0</option>
+                        <option value="FORMAT_1" selected>Format 1 — ISO-1</option>
+                        <option value="FORMAT_3">Format 3 — ISO-3</option>
+                        <option value="FORMAT_4">Format 4 — ISO-4 AES</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="transSrcKey">Source ZPK Key hex (optional):</label>
+                    <input type="text" id="transSrcKey" placeholder="DEFAULT_ZPK_ACQ" style="font-family:'Fira Code',monospace; font-size:0.75rem;">
+                </div>
+                <div class="form-group">
+                    <label for="transDstKey">Destination ZPK Key hex (optional):</label>
+                    <input type="text" id="transDstKey" placeholder="DEFAULT_ZPK_ISS" style="font-family:'Fira Code',monospace; font-size:0.75rem;">
+                </div>
+            </div>
+            <button class="btn btn-violet" onclick="translatePin()">↔️ Translate PIN Block</button>
+            <div id="pinTransResult" class="crypto-result" style="display:none; margin-top:0.75rem;"></div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- TAB 6: CLEARING & SETTLEMENT                   -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section id="tab-clearing" class="tab-content">
+        <div class="section-header">
+            <div class="section-icon" style="background:linear-gradient(135deg,#10b981,#059669)">🏦</div>
+            <div>
+                <h2>Batch Clearing &amp; Settlement Dashboard</h2>
+                <p>DMS 1240 Presentment, 1440 Chargeback, and 1644 Reconciliation File Management</p>
+            </div>
+        </div>
+
+        <div class="grid-2col">
+            <!-- Generate Batch -->
+            <div class="card card-green">
+                <h3>Generate End-of-Day Settlement Batch (1240)</h3>
+                <p class="card-desc">Aggregates all authorised (0200) transactions into a 1240 presentment batch with interchange fee calculation and 1644 control totals.</p>
+                <div class="form-group">
+                    <label for="clearingNetwork">Target Clearing Network:</label>
+                    <select id="clearingNetwork">
+                        <option value="MASTERCARD-IPM">Mastercard IPM (Integrated Processing Mode)</option>
+                        <option value="VISA-BASE2">Visa BASE II</option>
+                        <option value="AMEX-EPMS">Amex EPMS</option>
+                    </select>
+                </div>
+                <button class="btn btn-success" onclick="generateClearingBatch()">🏦 Generate Clearing Batch</button>
+                <div id="batchResult" style="margin-top:1rem;"></div>
+            </div>
+
+            <!-- File Chargeback -->
+            <div class="card card-red">
+                <h3>File 1440 Chargeback Dispute</h3>
+                <p class="card-desc">Submit a chargeback on behalf of the issuer for a disputed transaction.</p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="cbStan">Original STAN:</label>
+                        <input type="text" id="cbStan" placeholder="000123">
+                    </div>
+                    <div class="form-group">
+                        <label for="cbPan">Masked PAN:</label>
+                        <input type="text" id="cbPan" placeholder="453201******1234">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="cbAmount">Amount (12-digit ISO):</label>
+                        <input type="text" id="cbAmount" placeholder="000000002550">
+                    </div>
+                    <div class="form-group">
+                        <label for="cbReason">Dispute Reason Code:</label>
+                        <select id="cbReason">
+                            <option value="4837">4837 — Fraud / No Cardholder Authorization</option>
+                            <option value="4853">4853 — Cardholder Dispute (Defective Goods)</option>
+                            <option value="4863">4863 — Cardholder Does Not Recognize Transaction</option>
+                            <option value="4807">4807 — Warning Bulletin File</option>
+                            <option value="4808">4808 — Request for Authorization Declined</option>
+                            <option value="4812">4812 — Account Number Not On File</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn btn-secondary" style="border-color:rgba(239,68,68,0.4);color:#f87171;" onclick="fileChargeback()">⚠️ File Chargeback</button>
+                <div id="chargebackResult" style="margin-top:1rem;"></div>
+            </div>
+        </div>
+
+        <!-- Transaction Ledger -->
+        <div class="card" style="margin-top:0.5rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                <h3>Live Transaction State Ledger</h3>
+                <button class="btn btn-secondary btn-sm" onclick="loadTransactions()">↻ Refresh</button>
+            </div>
+            <div class="txn-row txn-row-header">
+                <span>STAN</span>
+                <span>Masked PAN</span>
+                <span>Amount</span>
+                <span>State</span>
+                <span>Timestamp</span>
+            </div>
+            <div id="txnList"><div style="padding:1.5rem;text-align:center;color:var(--text-muted);font-size:0.8rem;">Click Refresh to load transactions</div></div>
+        </div>
+
+        <!-- Batch Archive -->
+        <div class="card" style="margin-top:0.5rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                <h3>Clearing Batch Archive</h3>
+                <button class="btn btn-secondary btn-sm" onclick="loadBatches()">↻ Refresh</button>
+            </div>
+            <div id="batchList"><div style="padding:1.5rem;text-align:center;color:var(--text-muted);font-size:0.8rem;">Click Refresh to load batches</div></div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- TAB 7: NETWORK TELEMETRY                       -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section id="tab-telemetry" class="tab-content">
+        <div class="section-header">
+            <div class="section-icon" style="background:linear-gradient(135deg,#06b6d4,#0891b2)">📡</div>
+            <div>
+                <h2>Network Management &amp; Channel Telemetry</h2>
+                <p>ISO 8583 0800/0810 Keep-Alive Echo heartbeat monitoring and real-time channel health</p>
+            </div>
+        </div>
+
+        <div class="telemetry-grid">
+            <div class="metric-card">
+                <div class="metric-label">Channel Status</div>
+                <div class="metric-val green" id="telChannelStatus" style="font-size:0.95rem;">—</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Last Roundtrip</div>
+                <div class="metric-val blue" id="telLastRtt">—</div>
+                <div class="metric-unit">milliseconds</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Min RTT</div>
+                <div class="metric-val green" id="telMinRtt">—</div>
+                <div class="metric-unit">ms</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Max RTT</div>
+                <div class="metric-val amber" id="telMaxRtt">—</div>
+                <div class="metric-unit">ms</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Echos Sent</div>
+                <div class="metric-val blue" id="telEchosSent">—</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Echos OK</div>
+                <div class="metric-val green" id="telEchosOk">—</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Echos Failed</div>
+                <div class="metric-val red" id="telEchosFailed">—</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Success Rate</div>
+                <div class="metric-val green" id="telSuccessRate">—</div>
+                <div class="metric-unit">%</div>
+            </div>
+        </div>
+
+        <div class="grid-2col">
+            <div class="card">
+                <h3>Manual Echo Test (0800 → 0810)</h3>
+                <p class="card-desc">Trigger an immediate ISO 8583 0800 Network Management Request and await the 0810 response.</p>
+                <button class="btn btn-primary" onclick="triggerEcho()">📡 Fire Echo Now</button>
+                <div id="echoResult" style="margin-top:1rem;"></div>
+            </div>
+
+            <div class="card">
+                <h3>Last Echo Details</h3>
+                <div id="lastEchoDetails" class="sim-box empty">No echo executed yet in this session</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                <h3>Channel Status Report</h3>
+                <button class="btn btn-secondary btn-sm" onclick="loadTelemetry()">↻ Refresh</button>
+            </div>
+            <div id="telemetryRaw" class="code-block">Click "Refresh" to load telemetry data</div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- TAB 8: GUIDE / MASTERCLASS                     -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section id="tab-guide" class="tab-content">
+        <div class="card">
+            <h2>ISO 8583 Core Concepts &amp; Enterprise Spec Reference</h2>
+            <p class="card-desc" style="margin-bottom:1.5rem;">A structured reference guide covering the full ISO 8583 payment protocol suite.</p>
+
+            <div class="guide-grid">
+                <div class="guide-card">
+                    <div class="guide-num">1</div>
+                    <h3>MTI — Message Type Identifier</h3>
+                    <p>The 4-digit MTI defines the purpose, class, function, and originator of a message:</p>
+                    <ul style="margin-top:0.5rem;">
+                        <li><strong>Pos 1 (Version):</strong> <code>0</code>=1987, <code>1</code>=1993, <code>2</code>=2003</li>
+                        <li><strong>Pos 2 (Class):</strong> <code>1</code>=Auth, <code>2</code>=Financial, <code>4</code>=Reversal, <code>8</code>=Network Mgmt</li>
+                        <li><strong>Pos 3 (Function):</strong> <code>0</code>=Request, <code>1</code>=Response, <code>2</code>=Advice</li>
+                        <li><strong>Pos 4 (Originator):</strong> <code>0</code>=Acquirer, <code>2</code>=Issuer, <code>4</code>=Other</li>
+                    </ul>
+                </div>
+
+                <div class="guide-card">
+                    <div class="guide-num">2</div>
+                    <h3>Bitmaps &amp; Field Flags</h3>
+                    <p>The Primary Bitmap (16 hex / 64 bits) is a field index. <strong>Bit 1 = 1</strong> signals a Secondary Bitmap follows. Each set bit means that data element is present.</p>
+                    <p style="margin-top:0.5rem;"><code>7020 → 0111 0000 0010 0000</code> = DE 2, 3, 4, 11 present</p>
+                </div>
+
+                <div class="guide-card">
+                    <div class="guide-num">3</div>
+                    <h3>Data Encodings</h3>
+                    <ul>
+                        <li><strong>FIXED:</strong> Exact length (e.g. DE 3 = 6 chars: <code>000000</code>)</li>
+                        <li><strong>LLVAR:</strong> 2-digit length prefix + value (DE 2 PAN: <code>164532015588991234</code>)</li>
+                        <li><strong>LLLVAR:</strong> 3-digit length prefix + value (DE 48: <code>012Hello World!</code>)</li>
+                    </ul>
+                </div>
+
+                <div class="guide-card">
+                    <div class="guide-num">4</div>
+                    <h3>ISO 9564 PIN Block Formats</h3>
+                    <ul>
+                        <li><strong>Format 0 (ISO-0):</strong> PAN-XOR block — most common in global ATM networks</li>
+                        <li><strong>Format 1 (ISO-1):</strong> Transaction-independent — no PAN required</li>
+                        <li><strong>Format 3 (ISO-3):</strong> Enhanced entropy via random padding + PAN XOR</li>
+                        <li><strong>Format 4 (ISO-4):</strong> 16-byte AES-128 block — chip card transactions</li>
+                    </ul>
+                </div>
+
+                <div class="guide-card">
+                    <div class="guide-num">5</div>
+                    <h3>ISO 9797-1 Retail MAC</h3>
+                    <p>Message Authentication Code using Algorithm 3 (3DES with CBC-MAC). DE 64 holds the 8-byte (16 hex) MAC for 0200 financial requests. DE 128 for secondary MAC.</p>
+                    <p style="margin-top:0.5rem;"><code>MAC = 3DES_EDE(KL, KR, CBC_MAC(KL, padded_payload))</code></p>
+                </div>
+
+                <div class="guide-card">
+                    <div class="guide-num">6</div>
+                    <h3>DUKPT Key Management (ANSI X9.24)</h3>
+                    <p>Derived Unique Key Per Transaction — each swipe/dip generates a unique encryption key derived from BDK + KSN. Provides forward secrecy: compromising one key cannot recover past keys.</p>
+                    <ul style="margin-top:0.5rem;">
+                        <li><strong>BDK:</strong> Base Derivation Key (HSM-injected)</li>
+                        <li><strong>KSN:</strong> Key Serial Number — 10 bytes (21-bit counter)</li>
+                        <li><strong>IPEK:</strong> Initial PIN Encryption Key per terminal</li>
+                    </ul>
+                </div>
+
+                <div class="guide-card">
+                    <div class="guide-num">7</div>
+                    <h3>EMV &amp; BER-TLV (DE 55)</h3>
+                    <p>Chip card data is encoded as <strong>BER-TLV</strong> triplets in DE 55:</p>
+                    <ul style="margin-top:0.5rem;">
+                        <li><code>9F26</code> — Application Request Cryptogram (ARQC)</li>
+                        <li><code>9F36</code> — Application Transaction Counter (ATC)</li>
+                        <li><code>9F10</code> — Issuer Application Data (IAD)</li>
+                        <li><code>84</code>  — Dedicated File (DF) Name / AID</li>
+                    </ul>
+                </div>
+
+                <div class="guide-card">
+                    <div class="guide-num">8</div>
+                    <h3>DMS Clearing (1240/1440/1644)</h3>
+                    <p>Dual-Message System batch clearing is separate from online authorisation:</p>
+                    <ul style="margin-top:0.5rem;">
+                        <li><code>1240</code> — First Presentment (settlement)</li>
+                        <li><code>1440</code> — Chargeback (issuer dispute)</li>
+                        <li><code>1644</code> — File Header/Trailer (control totals)</li>
+                        <li><code>1740</code> — Fee Collection / Interchange Adjustment</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<div id="toast"></div>
+
+<script src="app.js"></script>
+<script>
+// ══════════════════════════════════════════════════
+// EXTENDED DASHBOARD JAVASCRIPT — Option D
+// ══════════════════════════════════════════════════
+
+const API = '';
+
+// ─── Tab Navigation ───────────────────────────────
+function switchTab(id) {
+    document.querySelectorAll('.tab-content').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + id).classList.add('active');
+    document.getElementById('tab-btn-' + id).classList.add('active');
+    if (id === 'telemetry') loadTelemetry();
+    if (id === 'clearing') { loadTransactions(); loadBatches(); }
+}
+
+// ─── Toast ────────────────────────────────────────
+function showToast(msg, type = 'info') {
+    const t = document.getElementById('toast');
+    const colors = { info: '#3b82f6', success: '#10b981', warn: '#f59e0b', error: '#ef4444' };
+    t.style.borderColor = colors[type] || colors.info;
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ─── Presets ──────────────────────────────────────
+function loadPreset(name) {
+    const presets = {
+        financial: '600000000002007020000000C080001645320155889912340000000000000002550000123TERM0001MERCHANT1234567840',
+        echo:      '60000000000800822000000000000000000000000101030000010817220000000001301',
+        reversal:  '600000000004007020000000C080001645320155889912340000000000000002550000123TERM0001MERCHANT1234567840',
+        emv_auth:  '600000000002007020000000C0800196453201558899123400000000000000002550000123TERM0001MERCHANT12345678409F2608A1B2C3D4E5F6079F36020012'
+    };
+    const raw = presets[name] || '';
+    document.getElementById('rawInput').value = raw;
+    unpackPayload();
+}
+
+// ─── EMV Presets ──────────────────────────────────
+function loadEmvPreset(name) {
+    const presets = {
+        contact:      '9F2608A1B2C3D4E5F6079F3602001E9F10120110A000002A0000000000000000000000FF9C01009F260182',
+        contactless:  '9F2608AABBCCDDEEFF00019F36020043840E325041592E5359532E4444463031'
+    };
+    document.getElementById('emvInput').value = presets[name] || '';
+}
+
+// ─── Unpack ───────────────────────────────────────
+async function unpackPayload() {
+    const raw = document.getElementById('rawInput').value.trim();
+    if (!raw) return;
+    const hasHeader = document.getElementById('hasHeader').checked;
+    const spec = document.getElementById('inspectSpecSelect').value;
+    try {
+        const res = await fetch(API + '/api/iso/unpack', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rawPayload: raw, hasHeader, specId: spec })
+        });
+        const data = await res.json();
+        renderInspectionResult(data);
+        document.getElementById('inspectionResult').classList.remove('hidden');
+    } catch (e) {
+        showToast('Unpack failed: ' + e.message, 'error');
+    }
+}
+
+function renderInspectionResult(data) {
+    document.getElementById('resHeader').textContent      = data.header || 'None';
+    document.getElementById('resMti').textContent         = data.mti || '—';
+    document.getElementById('resMtiDesc').textContent     = data.mtiDescription || '—';
+    document.getElementById('resPrimaryBitmap').textContent   = data.primaryBitmapHex || '—';
+    document.getElementById('resSecondaryBitmap').textContent = data.secondaryBitmapHex || 'None';
+    document.getElementById('resFieldCount').textContent  = (data.fields || []).length + ' fields';
+
+    const tbody = document.getElementById('fieldsTableBody');
+    tbody.innerHTML = '';
+    (data.fields || []).forEach(f => {
+        const typeBadge = badgeForType(f.type);
+        tbody.innerHTML += `<tr>
+            <td>DE ${f.fieldNumber}</td>
+            <td>${escHtml(f.name || '')}</td>
+            <td>${typeBadge}</td>
+            <td><span class="field-val">${escHtml(f.value || '')}</span></td>
+        </tr>`;
+    });
+
+    // sync bitmap grid if bitmap tab was visited
+    if (data.primaryBitmapHex) renderBitmapFromHex(data.primaryBitmapHex, data.secondaryBitmapHex);
+}
+
+function badgeForType(t) {
+    const map = { FIXED: 'badge-blue', LLVAR_ALPHA: 'badge-green', LLLVAR: 'badge-amber', BINARY: 'badge-violet' };
+    return `<span class="badge ${map[t] || 'badge-cyan'}">${t || '—'}</span>`;
+}
+
+function exportInspectedToCrypto() {
+    const payload = document.getElementById('rawInput').value.trim();
+    if (payload) {
+        document.getElementById('macPayload').value = payload;
+        switchTab('crypto');
+        showToast('Payload exported to Crypto Lab', 'success');
+    }
+}
+
+// ─── Pack & Simulate ──────────────────────────────
+function onMtiChange() { populateBuilderFields(document.getElementById('bMti').value); }
+
+function populateBuilderFields(mti) {
+    const d = document.getElementById('builderFields');
+    const base = `
+        <div class="form-row">
+            <div class="form-group"><label>DE 2 — PAN:</label><input type="text" id="f2" value="4532015588991234"></div>
+            <div class="form-group"><label>DE 3 — Processing Code:</label><input type="text" id="f3" value="000000"></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>DE 4 — Amount (12 digits):</label><input type="text" id="f4" value="000000002550"></div>
+            <div class="form-group"><label>DE 11 — STAN:</label><input type="text" id="f11" value="000123"></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>DE 41 — Terminal ID:</label><input type="text" id="f41" value="TERM0001"></div>
+            <div class="form-group"><label>DE 42 — Merchant ID:</label><input type="text" id="f42" value="MERCHANT1234567"></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>DE 49 — Currency Code (ISO 4217):</label><input type="text" id="f49" value="840"></div>
+            ${mti === '0800' ? '<div class="form-group"><label>DE 70 — Network Mgmt Code:</label><input type="text" id="f70" value="301"></div>' : ''}
+        </div>`;
+    d.innerHTML = base;
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    populateBuilderFields('0200');
+    buildBitmapGrids();
+    setTimeout(loadTelemetryQuiet, 800);
+});
+
+async function generatePackedMessage() {
+    const payload = buildPackRequest();
+    try {
+        const res = await fetch(API + '/api/iso/pack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await res.json();
+        document.getElementById('packedOutput').textContent = data.packed || '—';
+        document.getElementById('bitmapInfo').textContent = data.activeBits ? 'Active bits: ' + data.activeBits.join(', ') : '';
+    } catch (e) { showToast('Pack failed: ' + e.message, 'error'); }
+}
+
+async function packAndSimulate() {
+    const payload = buildPackRequest();
+    try {
+        const res = await fetch(API + '/api/iso/simulate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await res.json();
+        const box = document.getElementById('simResult');
+        box.classList.remove('empty');
+        box.innerHTML = renderSimResult(data);
+        document.getElementById('packedOutput').textContent = data.sentRaw || payload;
+    } catch (e) { showToast('Simulation failed: ' + e.message, 'error'); }
+}
+
+function buildPackRequest() {
+    const mti = document.getElementById('bMti').value;
+    const fields = {};
+    [2,3,4,11,41,42,49,70].forEach(n => {
+        const el = document.getElementById('f' + n);
+        if (el && el.value.trim()) fields[n] = el.value.trim();
+    });
+    return { header: document.getElementById('bHeader').value, mti, fields };
+}
+
+function renderSimResult(data) {
+    const rows = [
+        ['MTI', data.responseMti || data.mti || '—'],
+        ['Response Code (DE 39)', data.responseCode || '—'],
+        ['Auth Code (DE 38)', data.authCode || '—'],
+        ['Retrieval Ref (DE 37)', data.rrn || '—'],
+        ['Packed Sent', (data.sentRaw || '').substring(0, 80) + '...'],
+    ];
+    return rows.map(([k, v]) => `<div class="row"><span class="key">${k}</span><span class="val">${escHtml(String(v))}</span></div>`).join('');
+}
+
+// ─── Bitmap Grid ──────────────────────────────────
+const FIELD_NAMES = {
+    1:'Secondary Bitmap',2:'PAN',3:'Processing Code',4:'Amount',5:'Settlement Amount',
+    6:'Cardholder Billing Amount',7:'Transmission Date & Time',8:'Cardholder Billing Fee',
+    9:'Settlement Conversion Rate',10:'Cardholder Billing Conversion Rate',11:'STAN',
+    12:'Local Transaction Time',13:'Local Transaction Date',14:'Expiration Date',
+    15:'Settlement Date',16:'Currency Conversion Date',17:'Capture Date',18:'Merchant Type',
+    19:'Country Code — Acquiring Institution',20:'PAN Extended',21:'Forwarding Inst Country Code',
+    22:'Point of Service Entry Mode',23:'Card Sequence Number',24:'Network International ID',
+    25:'POS Condition Code',26:'POS PIN Capture Code',27:'Auth ID Response Length',
+    28:'Amount Transaction Fee',29:'Settlement Fee Amount',30:'Original Amount',31:'Acquirer Ref Data',
+    32:'Acquiring Institution ID',33:'Forwarding Institution ID',34:'PAN Extended',
+    35:'Track 2 Data',36:'Track 3 Data',37:'Retrieval Reference Number',38:'Auth Identification Response',
+    39:'Response Code',40:'Service Restriction Code',41:'Card Acceptor Terminal ID',
+    42:'Card Acceptor ID Code',43:'Card Acceptor Name / Location',44:'Additional Response Data',
+    45:'Track 1 Data',46:'Reserved',47:'Additional Data — National',48:'Additional Data — Private',
+    49:'Currency Code — Transaction',50:'Currency Code — Settlement',51:'Currency Code — Cardholder Billing',
+    52:'PIN Data (encrypted)',53:'Security Related Control Info',54:'Additional Amounts',
+    55:'ICC System Related Data (EMV DE 55)',56:'Reserved',57:'Reserved',58:'Reserved',
+    59:'Reserved',60:'Reserved',61:'Reserved',62:'Reserved',63:'Reserved',
+    64:'MAC — Message Authentication Code',65:'Secondary Bitmap Extension',
+    66:'Settlement Code',67:'Extended Payment Code',68:'Receiving Institution CC',
+    69:'Settlement Institution CC',70:'Network Mgmt Info Code',71:'Message Number',
+    72:'Data Record',73:'Action Date',74:'Credits Number',75:'Credits Reversal Number',
+    76:'Debits Number',77:'Debits Reversal Number',78:'Transfer Number',79:'Transfer Reversal Number',
+    80:'Inquiries Number',81:'Authorisations Number',82:'Debits Processing Fee Amount',
+    83:'Credits Processing Fee Amount',84:'Debits Transaction Fee Amount',
+    85:'Credits Transaction Fee Amount',86:'Amount — Credits',87:'Amount — Credits Reversal',
+    88:'Amount — Debits',89:'Amount — Debits Reversal',90:'Original Data Elements',
+    91:'File Update Code',92:'File Security Code',93:'Response Indicator',
+    94:'Service Indicator',95:'Replacement Amounts',96:'Message Security Code',
+    97:'Net Settlement Amount',98:'Payee',99:'Settlement Institution ID Code',
+    100:'Receiving Institution ID Code',101:'File Name',102:'Account ID 1',
+    103:'Account ID 2',104:'Transaction Description',105:'Reserved for ISO',
+    106:'Reserved for ISO',107:'Reserved for ISO',108:'Reserved for ISO',
+    109:'Reserved for ISO',110:'Reserved for ISO',111:'Reserved for ISO',
+    112:'Reserved for ISO',113:'Reserved for ISO',114:'Reserved for ISO',
+    115:'Reserved for ISO',116:'Reserved for National',117:'Reserved for National',
+    118:'Reserved for National',119:'Reserved for National',120:'Reserved for National',
+    121:'Reserved for Private',122:'Reserved for Private',123:'Reserved for Private',
+    124:'Reserved for Private',125:'Reserved for Private',126:'Reserved for Private',
+    127:'Reserved for Private',128:'MAC-2 (Secondary MAC)'
+};
+
+const bitmapBits = Array(128).fill(false);
+
+function buildBitmapGrids() {
+    ['gridPrimary', 'gridSecondary'].forEach((gId, block) => {
+        const g = document.getElementById(gId);
+        g.innerHTML = '';
+        for (let i = 0; i < 64; i++) {
+            const bit = block * 64 + i + 1;
+            const cell = document.createElement('div');
+            cell.className = 'bit-cell';
+            cell.id = 'bit-' + bit;
+            cell.innerHTML = `<span class="bit-num">${bit}</span>`;
+            cell.title = FIELD_NAMES[bit] || 'DE ' + bit;
+            cell.onclick = () => toggleBit(bit);
+            cell.onmouseenter = () => showBitInfo(bit);
+            g.appendChild(cell);
+        }
+    });
+}
+
+function toggleBit(bit) {
+    bitmapBits[bit - 1] = !bitmapBits[bit - 1];
+    document.getElementById('bit-' + bit).classList.toggle('active', bitmapBits[bit - 1]);
+    if (bit === 1) {
+        const secEl = document.getElementById('secondaryHexVal');
+        secEl.textContent = bitmapBits[0] ? bitmapToHex(65, 128) : 'Inactive';
+    }
+    updateBitmapHex();
+}
+
+function showBitInfo(bit) {
+    const active = bitmapBits[bit - 1];
+    document.getElementById('bitHoverInfo').innerHTML =
+        `<strong class="${active ? 'highlight' : ''}" >Bit ${bit} — DE ${bit}: ${FIELD_NAMES[bit] || 'Reserved'}</strong><br>
+        Status: <span class="${active ? 'result-ok' : 'result-fail'}">${active ? '● ACTIVE — field is present in message' : '○ INACTIVE — field absent from message'}</span>`;
+}
+
+function updateBitmapHex() {
+    document.getElementById('primaryHexVal').textContent   = bitmapToHex(1, 64);
+    if (bitmapBits[0]) {
+        document.getElementById('secondaryHexVal').textContent = bitmapToHex(65, 128);
+    } else {
+        document.getElementById('secondaryHexVal').textContent = 'Inactive';
+    }
+}
+
+function bitmapToHex(from, to) {
+    let hex = '';
+    for (let i = from - 1; i < to; i += 4) {
+        const nibble = (bitmapBits[i] ? 8 : 0) + (bitmapBits[i+1] ? 4 : 0) +
+                       (bitmapBits[i+2] ? 2 : 0) + (bitmapBits[i+3] ? 1 : 0);
+        hex += nibble.toString(16).toUpperCase();
+    }
+    return hex;
+}
+
+function renderBitmapFromHex(primHex, secHex) {
+    bitmapBits.fill(false);
+    hexToBits(primHex, 0);
+    if (secHex) hexToBits(secHex, 64);
+    for (let i = 1; i <= 128; i++) {
+        const c = document.getElementById('bit-' + i);
+        if (c) c.classList.toggle('active', bitmapBits[i - 1]);
+    }
+    updateBitmapHex();
+}
+
+function hexToBits(hex, offset) {
+    for (let i = 0; i < hex.length; i++) {
+        const val = parseInt(hex[i], 16);
+        for (let b = 3; b >= 0; b--) {
+            const bitIdx = offset + i * 4 + (3 - b);
+            if (bitIdx < 128) bitmapBits[bitIdx] = !!(val & (1 << b));
+        }
+    }
+}
+
+function clearBitmap() {
+    bitmapBits.fill(false);
+    document.querySelectorAll('.bit-cell').forEach(c => c.classList.remove('active'));
+    updateBitmapHex();
+}
+
+function loadBitmapFromInput() {
+    const raw = document.getElementById('rawInput').value.trim();
+    if (!raw) { showToast('No message in Inspector', 'warn'); return; }
+    const offset = document.getElementById('hasHeader').checked ? 14 : 4;
+    const primHex = raw.substring(offset, offset + 16);
+    const secHex  = raw.substring(offset + 16, offset + 32);
+    renderBitmapFromHex(primHex, secHex);
+    showToast('Bitmap loaded from Inspector payload', 'success');
+}
+
+function copyBitmapHex() {
+    const hex = document.getElementById('primaryHexVal').textContent;
+    navigator.clipboard.writeText(hex).then(() => showToast('Primary bitmap hex copied!', 'success'));
+}
+
+// ─── EMV BER-TLV ──────────────────────────────────
+async function parseEmv() {
+    const hex = document.getElementById('emvInput').value.trim().replace(/\s/g, '');
+    if (!hex) return showToast('Enter a DE 55 hex string', 'warn');
+    try {
+        const res = await fetch(API + '/api/iso/emv/parse', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ de55Hex: hex })
+        });
+        const data = await res.json();
+        renderEmvResult(data);
+    } catch (e) { showToast('EMV parse failed: ' + e.message, 'error'); }
+}
+
+function renderEmvResult(data) {
+    document.getElementById('emvTagCount').textContent    = data.tagCount ?? '—';
+    document.getElementById('emvArqcPresent').textContent = data.arqcPresent ? '✅ YES' : '❌ NO';
+    document.getElementById('emvArqcPresent').style.color = data.arqcPresent ? 'var(--accent-green)' : 'var(--accent-red)';
+    document.getElementById('emvArqcHex').textContent     = data.arqcHex || '—';
+    document.getElementById('emvAtcDecimal').textContent  = data.atcDecimal != null ? data.atcDecimal : '—';
+
+    const tree = document.getElementById('emvTlvTree');
+    tree.innerHTML = '';
+
+    (data.tags || []).forEach(tag => {
+        const isCritical = ['9F26', '9F36', '9F10', '57', '5A'].includes(tag.tag?.toUpperCase());
+        const div = document.createElement('div');
+        div.className = 'tlv-tag' + (isCritical ? ' critical' : '');
+        div.innerHTML = `
+            <div class="tlv-tag-header" onclick="this.parentElement.querySelector('.tlv-tag-val').classList.toggle('hidden')">
+                <span class="tlv-tag-id">${escHtml(tag.tag || '')}</span>
+                <span class="tlv-tag-name">${escHtml(tag.name || 'Unknown Tag')}</span>
+                ${isCritical ? '<span class="badge badge-amber">CRITICAL</span>' : ''}
+                <span class="tlv-tag-len">${tag.length ?? ''} bytes</span>
+            </div>
+            <div class="tlv-tag-val ${isCritical ? 'arqc-highlight' : ''}">${escHtml(tag.value || tag.hexValue || '')}</div>`;
+        tree.appendChild(div);
+    });
+
+    document.getElementById('emvResult').classList.remove('hidden');
+}
+
+// ─── Crypto Lab ───────────────────────────────────
+async function encodePin() {
+    const body = {
+        pin: document.getElementById('pinInput').value.trim(),
+        pan: document.getElementById('panInput').value.trim(),
+        format: document.getElementById('pinFormat').value,
+        keyHex: document.getElementById('pinKeyHex').value.trim() || null,
+        keyId: null
+    };
+    const el = document.getElementById('pinEncodeResult');
+    el.style.display = 'block';
+    el.innerHTML = '<div class="spinner"></div> Encoding...';
+    try {
+        const res = await fetch(API + '/api/iso/crypto/pin/encode', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        el.innerHTML = `
+            <div class="result-label">Clear PIN Block</div>
+            <div class="result-val">${escHtml(data.clearBlockHex || '—')}</div>
+            <div class="result-label" style="margin-top:0.5rem">Encrypted PIN Block (DE 52)</div>
+            <div class="result-val">${escHtml(data.encryptedBlockHex || '—')}</div>
+            <div class="result-label" style="margin-top:0.5rem">Format / Key Used</div>
+            <div style="color:var(--text-muted); font-size:0.75rem">${data.format || ''} — ${data.keyUsed || ''}</div>`;
+    } catch (e) { el.innerHTML = `<span class="result-fail">Error: ${e.message}</span>`; }
+}
+
+async function generateMac() {
+    const body = {
+        rawPayload: document.getElementById('macPayload').value.trim(),
+        keyHex: document.getElementById('macKeyHex').value.trim() || null,
+        keyId: null
+    };
+    const el = document.getElementById('macResult');
+    el.style.display = 'block';
+    el.innerHTML = '<div class="spinner"></div> Calculating...';
+    try {
+        const res = await fetch(API + '/api/iso/crypto/mac/generate', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        el.innerHTML = `
+            <div class="result-label">Retail MAC (DE 64 / DE 128)</div>
+            <div class="result-val" style="font-size:1.1rem">${escHtml(data.macHex || '—')}</div>
+            <div class="result-label" style="margin-top:0.5rem">Algorithm</div>
+            <div style="color:var(--text-muted); font-size:0.75rem">${data.algorithm || ''} — Key: ${data.keyUsed || ''}</div>`;
+    } catch (e) { el.innerHTML = `<span class="result-fail">Error: ${e.message}</span>`; }
+}
+
+function showMacVerifyPanel() {
+    const panel = document.getElementById('macVerifyPanel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+async function verifyMac() {
+    const body = {
+        rawPayload: document.getElementById('macPayload').value.trim(),
+        expectedMac: document.getElementById('macExpected').value.trim(),
+        keyHex: document.getElementById('macKeyHex').value.trim() || null,
+        keyId: null
+    };
+    const el = document.getElementById('macVerifyResult');
+    el.style.display = 'block';
+    try {
+        const res = await fetch(API + '/api/iso/crypto/mac/verify', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        const cls = data.valid ? 'result-ok' : 'result-fail';
+        const icon = data.valid ? '✅' : '❌';
+        el.innerHTML = `<span class="${cls}">${icon} ${data.message}</span>
+            <div class="result-label" style="margin-top:0.4rem">Calculated MAC</div>
+            <div class="result-val">${data.calculatedMacHex || '—'}</div>`;
+    } catch (e) { el.innerHTML = `<span class="result-fail">Error: ${e.message}</span>`; }
+}
+
+async function translatePin() {
+    const body = {
+        encryptedBlockHex: document.getElementById('transBlockHex').value.trim(),
+        srcPan:   document.getElementById('transSrcPan').value.trim(),
+        srcFormat: document.getElementById('transSrcFormat').value,
+        srcKeyHex: document.getElementById('transSrcKey').value.trim() || null,
+        dstFormat: document.getElementById('transDstFormat').value,
+        dstKeyHex: document.getElementById('transDstKey').value.trim() || null,
+        dstPan: null
+    };
+    const el = document.getElementById('pinTransResult');
+    el.style.display = 'block';
+    try {
+        const res = await fetch(API + '/api/iso/crypto/pin/translate', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        el.innerHTML = `
+            <div class="result-label">Translated PIN Block</div>
+            <div class="result-val" style="font-size:1.05rem">${escHtml(data.translatedBlockHex || '—')}</div>
+            <div class="result-label" style="margin-top:0.5rem">Translation</div>
+            <div style="color:var(--text-muted); font-size:0.75rem">${data.srcFormat} → ${data.dstFormat} &nbsp;|&nbsp; Status: <span class="${data.success ? 'result-ok' : 'result-fail'}">${data.success ? '✅ Success' : '❌ Failed'}</span></div>`;
+    } catch (e) { el.innerHTML = `<span class="result-fail">Error: ${e.message}</span>`; }
+}
+
+// ─── Clearing & Settlement ────────────────────────
+async function generateClearingBatch() {
+    const network = document.getElementById('clearingNetwork').value;
+    const el = document.getElementById('batchResult');
+    el.innerHTML = '<div class="spinner"></div> Generating batch...';
+    try {
+        const res = await fetch(API + '/api/iso/clearing/batch/generate', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ networkId: network })
+        });
+        const data = await res.json();
+        el.innerHTML = `
+            <div class="alert alert-success">✅ Batch <strong>${data.batchId}</strong> generated — ${data.totalTransactions} records</div>
+            <div class="clearing-stats">
+                <div class="stat-card"><div class="stat-label">Gross Amount</div><div class="stat-val green">$${formatCents(data.totalGrossAmountIso)}</div></div>
+                <div class="stat-card"><div class="stat-label">Interchange Fee</div><div class="stat-val amber">$${formatCents(data.totalInterchangeFeeIso)}</div></div>
+                <div class="stat-card"><div class="stat-label">Net Settlement</div><div class="stat-val blue">$${formatCents(data.netSettlementAmountIso)}</div></div>
+                <div class="stat-card"><div class="stat-label">Presentments</div><div class="stat-val">${data.presentmentCount}</div></div>
+                <div class="stat-card"><div class="stat-label">Chargebacks</div><div class="stat-val red">${data.chargebackCount}</div></div>
+                <div class="stat-card"><div class="stat-label">Network</div><div class="stat-val" style="font-size:0.8rem">${data.networkId}</div></div>
+            </div>
+            <details style="margin-top:0.5rem;">
+                <summary style="font-size:0.78rem;color:var(--text-muted);cursor:pointer;">View raw batch file</summary>
+                <pre class="code-block" style="margin-top:0.5rem;font-size:0.7rem;">${escHtml(data.rawBatchFile || '')}</pre>
+            </details>`;
+        loadBatches();
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">❌ ${e.message}</div>`; }
+}
+
+async function fileChargeback() {
+    const body = {
+        stan: document.getElementById('cbStan').value.trim(),
+        maskedPan: document.getElementById('cbPan').value.trim(),
+        amountIso: document.getElementById('cbAmount').value.trim(),
+        disputeReasonCode: document.getElementById('cbReason').value
+    };
+    const el = document.getElementById('chargebackResult');
+    try {
+        const res = await fetch(API + '/api/iso/clearing/chargeback', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        el.innerHTML = `<div class="alert alert-warn">⚠️ Chargeback filed: <strong>${data.recordId}</strong> — STAN: ${data.stan} Reason: ${data.disputeReasonCode}</div>`;
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">❌ ${e.message}</div>`; }
+}
+
+async function loadTransactions() {
+    try {
+        const res = await fetch(API + '/api/iso/transactions');
+        const data = await res.json();
+        const list = document.getElementById('txnList');
+        if (!data.length) {
+            list.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-muted);font-size:0.8rem;">No transactions yet — send a 0200 message first</div>';
+            return;
+        }
+        list.innerHTML = data.map(t => `
+            <div class="txn-row">
+                <span class="code-font" style="color:var(--accent-cyan)">${t.stan || '—'}</span>
+                <span class="code-font" style="font-size:0.75rem;">${t.maskedPan || '—'}</span>
+                <span>$${formatCents(t.authorisedAmount || t.amount || '000000000000')}</span>
+                <span><span class="state-chip state-${t.state}">${t.state || '—'}</span></span>
+                <span style="font-size:0.7rem;color:var(--text-muted);">${formatTs(t.timestamp)}</span>
+            </div>`).join('');
+    } catch (e) { console.error(e); }
+}
+
+async function loadBatches() {
+    try {
+        const res = await fetch(API + '/api/iso/clearing/batches');
+        const data = await res.json();
+        const list = document.getElementById('batchList');
+        if (!data.length) {
+            list.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-muted);font-size:0.8rem;">No batches generated yet</div>';
+            return;
+        }
+        list.innerHTML = data.map(b => `
+            <div style="border-bottom:1px solid var(--border);padding:0.85rem 0.9rem;display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:0.5rem;font-size:0.8rem;">
+                <span class="code-font" style="color:var(--accent-green)">${b.batchId}</span>
+                <span>${b.settlementDate}</span>
+                <span>$${formatCents(b.netSettlementAmountIso)}</span>
+                <span>${b.totalTransactions} records</span>
+                <span style="color:var(--text-muted);font-size:0.72rem;">${b.networkId}</span>
+            </div>`).join('');
+    } catch (e) { console.error(e); }
+}
+
+// ─── Telemetry ─────────────────────────────────────
+async function loadTelemetry() {
+    try {
+        const res = await fetch(API + '/api/iso/echo/status');
+        const data = await res.json();
+        renderTelemetry(data);
+    } catch (e) { console.error('Telemetry fetch failed', e); }
+}
+
+async function loadTelemetryQuiet() {
+    try {
+        const res = await fetch(API + '/api/iso/echo/status');
+        const data = await res.json();
+        // Update header badge only
+    } catch {}
+}
+
+function renderTelemetry(data) {
+    setTelVal('telChannelStatus', data.status || '—',     data.status === 'HEALTHY' ? 'green' : 'amber');
+    setTelVal('telLastRtt',      data.lastRttMs != null ? data.lastRttMs : '—', 'blue');
+    setTelVal('telMinRtt',       data.minRttMs != null  ? data.minRttMs : '—', 'green');
+    setTelVal('telMaxRtt',       data.maxRttMs != null  ? data.maxRttMs : '—', 'amber');
+    setTelVal('telEchosSent',    data.echosSent   ?? '—', 'blue');
+    setTelVal('telEchosOk',      data.echosOk     ?? '—', 'green');
+    setTelVal('telEchosFailed',  data.echosFailed ?? '—', 'red');
+    const rate = data.echosSent ? ((data.echosOk / data.echosSent) * 100).toFixed(1) : '—';
+    setTelVal('telSuccessRate', rate, 'green');
+    document.getElementById('telemetryRaw').textContent = JSON.stringify(data, null, 2);
+}
+
+function setTelVal(id, val, cls) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = val;
+    el.className = 'metric-val ' + (cls || '');
+}
+
+async function triggerEcho() {
+    const el = document.getElementById('echoResult');
+    el.innerHTML = '<div class="spinner"></div> Sending echo...';
+    try {
+        const res = await fetch(API + '/api/iso/echo/trigger', { method: 'POST' });
+        const data = await res.json();
+        const ok = data.responseCode === '00';
+        el.innerHTML = `<div class="alert ${ok ? 'alert-success' : 'alert-error'}">${ok ? '✅' : '❌'} Echo ${ok ? 'successful' : 'failed'} — RTT: <strong>${data.roundTripMs ?? '—'} ms</strong> — RC: ${data.responseCode || '—'}</div>`;
+        document.getElementById('lastEchoDetails').innerHTML = `
+            <div class="row"><span class="key">STAN</span><span class="val">${data.stan || '—'}</span></div>
+            <div class="row"><span class="key">Sent MTI</span><span class="val">0800</span></div>
+            <div class="row"><span class="key">Response MTI</span><span class="val">0810</span></div>
+            <div class="row"><span class="key">Response Code</span><span class="val">${data.responseCode || '—'}</span></div>
+            <div class="row"><span class="key">Roundtrip (ms)</span><span class="val">${data.roundTripMs ?? '—'}</span></div>
+            <div class="row"><span class="key">Status</span><span class="val ${ok ? 'result-ok' : 'result-fail'}">${ok ? '✅ OK' : '❌ FAILED'}</span></div>`;
+        loadTelemetry();
+    } catch (e) { el.innerHTML = `<div class="alert alert-error">❌ ${e.message}</div>`; }
+}
+
+// ─── Helpers ──────────────────────────────────────
+function formatCents(isoAmt) {
+    if (!isoAmt) return '0.00';
+    return (parseInt(isoAmt) / 100).toFixed(2);
+}
+
+function formatTs(ts) {
+    if (!ts) return '—';
+    try { return new Date(ts).toLocaleString(); } catch { return ts; }
+}
+
+function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Expose legacy functions expected by app.js
+window.switchTab = switchTab;
+</script>
 </body>
 </html>
