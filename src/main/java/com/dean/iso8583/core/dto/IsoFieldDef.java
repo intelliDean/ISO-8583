@@ -16,14 +16,3 @@ public record IsoFieldDef(
         String description
 ) {
 }
-
-
-//public record IsoFieldDef(
-//        int fieldId,
-//        String name,
-//        IsoDataType dataType,
-//        IsoLengthType lengthType,
-//        int maxLength,
-//        String description
-//) {
-//}

@@ -1,4 +1,7 @@
-package com.dean.iso8583.core.echo;
+package com.dean.iso8583.core.echo.dto;
+
+import com.dean.iso8583.core.echo.enums.NetworkManagementCode;
+import lombok.Builder;
 
 import java.time.Instant;
 
@@ -31,7 +34,40 @@ public record EchoResult(
         String errorMessage,
         Instant timestamp
 ) {
-    public static EchoResult success(
+    public static EchoResult success(SuccessRequest request) {
+        return new EchoResult(
+                true,
+                request.roundtripMs(),
+                request.stan(),
+                request.transmissionDateTime(),
+                NetworkManagementCode.ECHO_TEST.getCode(),
+                request.responseMti(),
+                request.responseCode(),
+                request.rawRequest(),
+                request.rawResponse(),
+                null,
+                Instant.now()
+        );
+    }
+
+    public static EchoResult failure(FailureRequest request) {
+        return new EchoResult(
+                false,
+                request.roundtripMs(),
+                request.stan(),
+                request.transmissionDateTime(),
+                NetworkManagementCode.ECHO_TEST.getCode(),
+                null,
+                "ERR",
+                request.rawRequest(),
+                null,
+                request.errorMessage(),
+                Instant.now()
+        );
+    }
+
+    @Builder
+    public record SuccessRequest(
             long roundtripMs,
             String stan,
             String transmissionDateTime,
@@ -40,40 +76,17 @@ public record EchoResult(
             String rawRequest,
             String rawResponse
     ) {
-        return new EchoResult(
-                true,
-                roundtripMs,
-                stan,
-                transmissionDateTime,
-                NetworkManagementCode.ECHO_TEST.getCode(),
-                responseMti,
-                responseCode,
-                rawRequest,
-                rawResponse,
-                null,
-                Instant.now()
-        );
     }
 
-    public static EchoResult failure(
+    @Builder
+    public record FailureRequest(
             long roundtripMs,
             String stan,
             String transmissionDateTime,
             String rawRequest,
             String errorMessage
     ) {
-        return new EchoResult(
-                false,
-                roundtripMs,
-                stan,
-                transmissionDateTime,
-                NetworkManagementCode.ECHO_TEST.getCode(),
-                null,
-                "ERR",
-                rawRequest,
-                null,
-                errorMessage,
-                Instant.now()
-        );
     }
 }
+
+

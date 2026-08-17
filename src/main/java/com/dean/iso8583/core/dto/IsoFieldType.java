@@ -51,18 +51,4 @@ public enum IsoFieldType {
      * Binary bitmap
      */
     BINARY_FIXED,
-
-    FIXED_TEXT,
-
-    LLVAR_TEXT,
-
-    LLLVAR_NUMERIC,
-
-    LLLVAR_TEXT,
-
-    FIXED_BINARY,
-
-    LLVAR_BINARY,
-
-    LLLVAR_BINARY
 }

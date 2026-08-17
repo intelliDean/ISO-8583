@@ -1,4 +1,4 @@
-package com.dean.iso8583.core.echo;
+package com.dean.iso8583.core.echo.dto;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

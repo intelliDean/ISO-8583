@@ -1,4 +1,6 @@
-package com.dean.iso8583.core.echo;
+package com.dean.iso8583.core.echo.dto;
+
+import com.dean.iso8583.core.echo.enums.ChannelHealthStatus;
 
 import java.time.Instant;
 
@@ -19,16 +21,27 @@ import java.time.Instant;
  * @param intervalSeconds     interval between automatic background echo checks in seconds
  */
 public record ChannelStatusReport(
+
         ChannelHealthStatus status,
+
         long totalEchoesSent,
+
         long successfulEchoes,
+
         long failedEchoes,
+
         int consecutiveFailures,
+
         Long lastLatencyMs,
+
         Instant lastEchoTime,
+
         Instant lastSuccessTime,
+
         String lastError,
+
         boolean schedulerEnabled,
+
         long intervalSeconds
 ) {
 }

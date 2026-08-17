@@ -1,24 +1,31 @@
-package com.dean.iso8583.core.emv;
+package com.dean.iso8583.core.emv.enums;
+
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 
 /**
  * Developer Note:
  * Registry of well-known EMV tag identifiers as defined in:
- *  - EMV Book 3 (Application Specification)
- *  - EMV Book 4 (Other Interfaces)
- *  - EMVCo Payment Tokenisation Specification
+ * <ul>
+ *     <li>EMV Book 3 (Application Specification)</li>
+ *     <li>EMV Book 4 (Other Interfaces)</li>
+ *     <li>EMVCo Payment Tokenization Specification</li>
+ * </ul>
  *
  * These tags appear primarily inside DE 55 (ICC System Related Data) of an
- * ISO 8583 authorisation request (0200) and response (0210) for chip card and
+ * ISO 8583 authorization request (0200) and response (0210) for chip card and
  * contactless transactions (NFC / CTLS).
  *
- * Enterprise Relevance:
- *  - ARQC (9F26) cryptogram validation is required before approving any
- *    chip-initiated transaction — missing or tampered values must trigger decline.
- *  - ATC (9F36) monotonically increases with every chip transaction; a decreasing
- *    or replayed ATC is a strong fraud signal and MUST be rejected.
- *  - Issuer Application Data (9F10) is institution-specific and carries
- *    cryptographic counters used for offline PIN verification replay detection.
+ *
+ * <ul><br>
+ *     Enterprise Relevance:
+ *     <li>ARQC (9F26) cryptogram validation is required before approving any chip-initiated transaction — missing or tampered values must trigger decline.</li>
+ *     <li>ATC (9F36) monotonically increases with every chip transaction; a decreasing or replayed ATC is a strong fraud signal and MUST be rejected.</li>
+ *     <li>Issuer Application Data (9F10) is institution-specific and carries cryptographic counters used for offline PIN verification replay detection.</li>
+ * </ul>
  */
+@Getter
+@AllArgsConstructor
 public enum EmvTagName {
 
     // ─── Cardholder ──────────────────────────────────────────────────────────
@@ -68,31 +75,36 @@ public enum EmvTagName {
 
     /**
      * 9F26 – Authorisation Request Cryptogram (ARQC).
-     *
+     *<ul><br>
      * Developer Note:
-     * This is the primary on-chip MAC that the issuer MUST verify.
-     * An 8-byte value derived from transaction data + card master key.
-     * Incorrect ARQC = potential skimmed/cloned card — must decline.
+     *     <li>This is the primary on-chip MAC that the issuer MUST verify.</li>
+     *     <li>An 8-byte value derived from transaction data + card master key.</li>
+     *     <li>Incorrect ARQC = potential skimmed/cloned card — must decline.</li>
+     *</ul>
+     *
      */
     ARQC("9F26", "Application Request Cryptogram (ARQC)"),
 
     /**
      * 9F10 – Issuer Application Data (IAD).
-     *
+     *<ul><br>
      * Developer Note:
-     * Proprietary issuer data embedded by the chip firmware.
-     * Contains offline CVR (Card Verification Result) and key derivation
-     * counters. The issuer host must parse this field during ARQC validation.
+     *     <li>Proprietary issuer data embedded by the chip firmware.</li>
+     *     <li>Contains offline CVR (Card Verification Result) and key derivation</li>
+     *     <li>counters. The issuer host must parse this field during ARQC validation.</li>
+     *</ul>
      */
     ISSUER_APPLICATION_DATA("9F10", "Issuer Application Data"),
 
     /**
      * 9F36 – Application Transaction Counter (ATC).
-     *
+     *<ul><br>
      * Developer Note:
-     * Monotonically increasing 2-byte counter maintained by the chip.
-     * The issuer must record the last seen ATC per card and REJECT any
-     * authorisation where ATC ≤ last-seen (replay attack detection).
+     *
+     * <li>Monotonically increasing 2-byte counter maintained by the chip.</li>
+     * <li>The issuer must record the last seen ATC per card and REJECT any</li>
+     * <li>authorization where ATC ≤ last-seen (replay attack detection).</li>
+     * </ul>
      */
     APPLICATION_TRANSACTION_COUNTER("9F36", "Application Transaction Counter (ATC)"),
 
@@ -187,22 +199,10 @@ public enum EmvTagName {
     private final String hexTag;
     private final String description;
 
-    EmvTagName(String hexTag, String description) {
-        this.hexTag = hexTag;
-        this.description = description;
-    }
-
-    public String getHexTag() {
-        return hexTag;
-    }
-
-    public String getDescription() {
-        return description;
-    }
 
     /**
-     * Resolves a hex tag string (case-insensitive) to its {@link EmvTagName}.
-     * Returns {@link #UNKNOWN} for any tag not in the registry.
+     * Resolves a hex tag string (case-insensitive) to its {@link EmvTagName}.<br>
+     * <li>Returns {@link #UNKNOWN} for any tag not in the registry.</li>
      *
      * @param tag hex tag identifier, e.g. {@code "9F26"}
      * @return matching enum constant or {@link #UNKNOWN}

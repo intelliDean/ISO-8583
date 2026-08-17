@@ -85,7 +85,7 @@ public class ReversalEngine {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Returns {@code true} if the given MTI represents an authorisation
+     * Returns {@code true} if the given MTI represents an authorization
      * request that should be recorded in the transaction store.
      *
      * @param mti 4-digit ISO 8583 MTI
@@ -105,7 +105,7 @@ public class ReversalEngine {
     }
 
     /**
-     * Records an approved authorisation response in the transaction store so
+     * Records an approved authorization response in the transaction store so
      * that future reversals can locate it.
      *
      * <p>Developer Note: Only call this when DE 39 = "00" in the response.
@@ -147,7 +147,8 @@ public class ReversalEngine {
         log.info("Processing reversal {} — STAN={} PAN={}",
                 mti,
                 reversalRequest.getField(11),
-                IsoMessageSanitizer.maskPan(reversalRequest.getField(2)));
+                IsoMessageSanitizer.maskPan(reversalRequest.getField(2))
+        );
 
         // ── Step 1: Validate minimum required fields ───────────────────────
         if (!hasRequiredReversalFields(reversalRequest)) {
@@ -162,10 +163,10 @@ public class ReversalEngine {
         Optional<TransactionRecord> originalOpt = transactionStore.find(stan, maskedPan);
 
         if (originalOpt.isEmpty()) {
-            /*
+            /**
              * Developer Note:
              * Code 25 (Unable to locate record) is returned for 0400 requests
-             * when no matching authorisation is in the store. For 0420 advice
+             * when no matching authorization is in the store. For 0420 advice
              * messages, per scheme rules we must still respond with 00 even
              * if we cannot find the original — the advice is treated as a
              * late notification and accepted unconditionally.
@@ -182,8 +183,8 @@ public class ReversalEngine {
 
         // ── Step 3: Duplicate reversal check ─────────────────────────────
         if (original.state() == TransactionState.REVERSED && !isAdvice) {
-            /*
-             * Developer Note:
+            /**
+             *  Developer Note:
              * A transaction that is already in REVERSED state cannot be reversed
              * again. This prevents a double-credit attack where an acquirer
              * intentionally sends duplicate 0400 messages. Response code 94
@@ -239,7 +240,7 @@ public class ReversalEngine {
      * Determines the reversed amount from the request.
      *
      * <p>Developer Note: For a full reversal ({@code 0400}), the reversed
-     * amount equals the original authorised amount. For a partial reversal
+     * amount equals the original authorized amount. For a partial reversal
      * advice ({@code 0420} with DE 95 present), DE 95 provides the amount
      * actually reversed, which may be less than the original.</p>
      *
@@ -255,15 +256,15 @@ public class ReversalEngine {
                 return de95.substring(0, 12);
             }
         }
-        // Full reversal: use original authorised amount
+        // Full reversal: use original authorized amount
         return original.authorisedAmount();
     }
 
     /**
      * Determines the new transaction state after a reversal.
      *
-     * <p>If the reversed amount equals the original authorised amount → {@link TransactionState#REVERSED}.
-     * If the reversed amount is less than the original → {@link TransactionState#PARTIALLY_REVERSED}.</p>
+     * <pre>If the reversed amount equals the <br>original authorized amount → {@link TransactionState#REVERSED}.</pre>
+     * <p>If the reversed amount is less than the <br>original → {@link TransactionState#PARTIALLY_REVERSED}.</p>
      */
     private TransactionState determineNewState(
             IsoMessage request,

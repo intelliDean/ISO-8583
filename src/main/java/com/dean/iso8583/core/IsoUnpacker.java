@@ -9,15 +9,18 @@ import org.springframework.util.StringUtils;
 
 /**
  * Developer Note:
- * Enterprise ISO 8583 Stream Parser & Unpacker Engine.
- * Supports both static default unpacking and dynamic network packager specifications (e.g. Visa SMS, Mastercard IPM).
- * 
+ * <p>Enterprise ISO 8583 Stream Parser & Unpacker Engine.</p>
+ * <p>Supports both static default unpacking and dynamic network packager specifications (e.g. Visa SMS, Mastercard IPM).</p>
+ *
+ *<ol>
  * Parsing Algorithm:
- * 1. Extract optional TPDU Transport Header (10 chars by default).
- * 2. Extract 4-digit Message Type Identifier (MTI).
- * 3. Extract 16 Hex character (64 bits) Primary Bitmap.
- * 4. Check Bit 1: If active, extract 16 Hex character (64 bits) Secondary Bitmap (DE 65 - 128).
- * 5. Parse Data Elements in numerical sequence (2..128) according to spec length indicator rules.
+ *
+ * <li>Extract optional TPDU Transport Header (10 chars by default).</ul>
+ *  <li>Extract 4-digit Message Type Identifier (MTI).</ul>
+ * <li> Extract 16 Hex character (64 bits) Primary Bitmap.</ul>
+ * <li> Check Bit 1: If active, extract 16 Hex character (64 bits) Secondary Bitmap (DE 65 - 128).</ul>
+ * <li> Parse Data Elements in numerical sequence (2..128) according to spec length indicator rules.</ul>
+ * </ol>
  */
 public final class IsoUnpacker {
 
@@ -93,12 +96,14 @@ public final class IsoUnpacker {
         return activeFields;
     }
 
-    private static void readBitmap(PayloadReader reader, int startFieldId, boolean[] activeFields, String bitmapName) {
+    private static void readBitmap(
+            PayloadReader reader, int startFieldId, boolean[] activeFields, String bitmapName) {
         String bitmapHex = reader.read(BITMAP_HEX_LENGTH, bitmapName);
         parseBitmap(bitmapHex, startFieldId, activeFields);
     }
 
-    private static void readDataElements(PayloadReader reader, IsoMessage message, boolean[] activeFields, IsoSpecDefinition spec) {
+    private static void readDataElements(
+            PayloadReader reader, IsoMessage message, boolean[] activeFields, IsoSpecDefinition spec) {
         for (int fieldId = 2; fieldId <= MAX_FIELD_ID; fieldId++) {
             if (activeFields[fieldId]) {
                 readDataElement(reader, message, fieldId, spec);
@@ -106,7 +111,8 @@ public final class IsoUnpacker {
         }
     }
 
-    private static void readDataElement(PayloadReader reader, IsoMessage message, int fieldId, IsoSpecDefinition spec) {
+    private static void readDataElement(
+            PayloadReader reader, IsoMessage message, int fieldId, IsoSpecDefinition spec) {
         IsoFieldDef definition = getFieldDefinition(fieldId, spec);
         int valueLength = determineValueLength(reader, definition, fieldId);
         String value = reader.read(valueLength, "DE %d value".formatted(fieldId));
@@ -136,7 +142,6 @@ public final class IsoUnpacker {
             case FIXED_NUMERIC, FIXED_ALPHA, BINARY_FIXED -> definition.maxLength();
             case LLVAR_NUMERIC, LLVAR_ALPHA -> readVariableLength(reader, 2, fieldId);
             case LLLVAR_ALPHA -> readVariableLength(reader, 3, fieldId);
-            default -> definition.maxLength();
         };
     }
 

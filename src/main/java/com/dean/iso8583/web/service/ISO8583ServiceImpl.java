@@ -3,14 +3,18 @@ package com.dean.iso8583.web.service;
 import com.dean.iso8583.core.IsoPacker;
 import com.dean.iso8583.core.IsoSpec;
 import com.dean.iso8583.core.IsoUnpacker;
+import com.dean.iso8583.core.crypto.CryptoKeyRegistry;
+import com.dean.iso8583.core.crypto.CryptoUtils;
+import com.dean.iso8583.core.crypto.IsoPinBlockEngine;
+import com.dean.iso8583.core.crypto.MacEngine;
 import com.dean.iso8583.core.dto.IsoFieldDef;
 import com.dean.iso8583.core.dto.IsoFieldType;
 import com.dean.iso8583.core.dto.IsoMessage;
 import com.dean.iso8583.core.dto.IsoSpecDefinition;
-import com.dean.iso8583.core.echo.ChannelStatusReport;
-import com.dean.iso8583.core.echo.EchoResult;
+import com.dean.iso8583.core.echo.dto.ChannelStatusReport;
+import com.dean.iso8583.core.echo.dto.EchoResult;
 import com.dean.iso8583.core.echo.IsoEchoManager;
-import com.dean.iso8583.core.emv.EmvParseResult;
+import com.dean.iso8583.core.emv.dto.EmvParseResult;
 import com.dean.iso8583.core.emv.EmvTlvParser;
 import com.dean.iso8583.core.reversal.TransactionRecord;
 import com.dean.iso8583.core.reversal.TransactionStore;
@@ -28,9 +32,9 @@ import java.util.Map;
 
 /**
  * Developer Note:
- * Enterprise ISO 8583 Service Implementation.
- * Orchestrates message packing, unpacking, dynamic spec resolution, host simulation,
- * transaction state queries, and keep-alive network heartbeat telemetry.
+ * <p>Enterprise ISO 8583 Service Implementation.</p>
+ * <p>Orchestrates message packing, unpacking, dynamic spec resolution, host simulation,
+ * transaction state queries, keep-alive network heartbeat telemetry, and cryptographic operations.</p>
  */
 @Slf4j
 @Service
@@ -41,6 +45,7 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     private final IsoSpecRegistry isoSpecRegistry;
     private final TransactionStore transactionStore;
     private final IsoEchoManager isoEchoManager;
+    private final CryptoKeyRegistry cryptoKeyRegistry;
 
     @Override
     public Map<Integer, IsoFieldDef> getCatalog() {
@@ -88,17 +93,22 @@ public class ISO8583ServiceImpl implements ISO8583Service {
 
     /**
      * Developer Note:
-     * Parses DE 55 (ICC System Related Data) using the BER-TLV parser.
+     * <p>Parses DE 55 (ICC System Related Data) using the BER-TLV parser.</p>
      *
+     * <ul>
      * Key fraud-detection signals surfaced in the response:
-     *  - {@code hasArqc}   — ARQC (9F26) presence; absent in magnetic-stripe fallback
-     *  - {@code hasAtc}    — ATC (9F36) presence; must be validated for replay attacks
-     *  - {@code atcDecimal} — integer ATC value for comparison with issuer stored value
      *
+     *  <li> {@code hasArqc}   — ARQC (9F26) presence; absent in magnetic-stripe fallback</li>
+     * <li> {@code hasAtc}    — ATC (9F36) presence; must be validated for replay attacks</li>
+     *  <li> {@code atcDecimal} — integer ATC value for comparison with issuer stored value</li>
+     *</ul>
+     * <ol>
      * In production, this method should be extended to:
-     *  1. Forward {@code arqcValue} + session data to an HSM for ARQC verification.
-     *  2. Compare {@code atcDecimal} against the issuer's card-level ATC store.
-     *  3. Log the IAD (9F10) for offline CVR auditing.
+     *
+     *  <li>Forward {@code arqcValue} + session data to an HSM for ARQC verification.</li>
+     *  <li> Compare {@code atcDecimal} against the issuer's card-level ATC store.</li>
+     * <li> Log the IAD (9F10) for offline CVR auditing.</li>
+     *  </ol>
      */
     @Override
     public EmvParseResponse parseEmv(EmvParseRequest request) {
@@ -140,6 +150,66 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     @Override
     public ChannelStatusReport getEchoStatus() {
         return isoEchoManager.getChannelStatus();
+    }
+
+    @Override
+    public PinEncodeResponse encodePin(PinEncodeRequest request) {
+        byte[] key = resolveKey(request.keyHex(), request.keyId(), "DEFAULT_ZPK_ACQ");
+        String clearBlock = IsoPinBlockEngine.encodeClearPinBlock(request.pin(), request.pan(), request.format());
+        String encryptedBlock = IsoPinBlockEngine.encryptPin(request.pin(), request.pan(), request.format(), key);
+
+        String keyName = request.keyId() != null ? request.keyId() : (request.keyHex() != null ? "CUSTOM_KEY" : "DEFAULT_ZPK_ACQ");
+        return new PinEncodeResponse(clearBlock, encryptedBlock, request.format(), keyName);
+    }
+
+    @Override
+    public PinTranslateResponse translatePin(PinTranslateRequest request) {
+        byte[] srcKey = resolveKey(request.srcKeyHex(), request.srcKeyId(), "DEFAULT_ZPK_ACQ");
+        byte[] dstKey = resolveKey(request.dstKeyHex(), request.dstKeyId(), "DEFAULT_ZPK_ISS");
+        String dstPan = request.dstPan() != null ? request.dstPan() : request.srcPan();
+
+        String translated = IsoPinBlockEngine.translatePinBlock(
+                request.encryptedBlockHex(),
+                request.srcPan(),
+                request.srcFormat(),
+                srcKey,
+                dstPan,
+                request.dstFormat(),
+                dstKey
+        );
+
+        return new PinTranslateResponse(translated, request.srcFormat(), request.dstFormat(), true);
+    }
+
+    @Override
+    public MacGenerateResponse generateMac(MacGenerateRequest request) {
+        byte[] key = resolveKey(request.keyHex(), request.keyId(), "DEFAULT_MAK");
+
+        byte[] payloadBytes = request.rawPayload().getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        String mac = MacEngine.calculateRetailMac(payloadBytes, key);
+
+        String keyName = request.keyId() != null ? request.keyId() : (request.keyHex() != null ? "CUSTOM_KEY" : "DEFAULT_MAK");
+        return new MacGenerateResponse(mac, "ISO 9797-1 Algorithm 3 (Retail MAC)", keyName);
+    }
+
+    @Override
+    public MacVerifyResponse verifyMac(MacVerifyRequest request) {
+        byte[] key = resolveKey(request.keyHex(), request.keyId(), "DEFAULT_MAK");
+
+        byte[] payloadBytes = request.rawPayload().getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        String calculatedMac = MacEngine.calculateRetailMac(payloadBytes, key);
+
+        boolean valid = calculatedMac.equalsIgnoreCase(request.expectedMac().trim());
+        return new MacVerifyResponse(valid, calculatedMac, valid ? "MAC valid" : "MAC mismatch");
+    }
+
+    private byte[] resolveKey(String keyHex, String keyId, String defaultKeyId) {
+        if (keyHex != null && !keyHex.isBlank()) {
+            return CryptoUtils.hexToBytes(keyHex);
+        }
+        String id = (keyId != null && !keyId.isBlank()) ? keyId : defaultKeyId;
+        return cryptoKeyRegistry.getKey(id)
+                .orElseThrow(() -> new IllegalArgumentException("Cryptographic key not found in registry: " + id));
     }
 
     private UnpackResult buildUnpackResult(IsoMessage message, IsoSpecDefinition spec) {

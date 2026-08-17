@@ -1,6 +1,11 @@
 package com.dean.iso8583;
 
 import com.dean.iso8583.core.echo.*;
+import com.dean.iso8583.core.echo.dto.ChannelStatusReport;
+import com.dean.iso8583.core.echo.dto.EchoResult;
+import com.dean.iso8583.core.echo.dto.IsoEchoProperties;
+import com.dean.iso8583.core.echo.enums.ChannelHealthStatus;
+import com.dean.iso8583.core.echo.enums.NetworkManagementCode;
 import com.dean.iso8583.web.data.dto.SimulateResult;
 import com.dean.iso8583.web.data.utils.IsoTcpClient;
 import org.junit.jupiter.api.BeforeEach;

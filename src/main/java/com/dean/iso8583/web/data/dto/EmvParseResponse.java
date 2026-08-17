@@ -1,15 +1,16 @@
 package com.dean.iso8583.web.data.dto;
 
-import com.dean.iso8583.core.emv.EmvTag;
+import com.dean.iso8583.core.emv.dto.EmvTag;
+import com.dean.iso8583.core.emv.dto.EmvParseResult;
 
 import java.util.List;
 
 /**
  * Developer Note:
- * REST response DTO for the POST /api/iso/emv/parse endpoint.
+ * <p>REST response DTO for the POST /api/iso/emv/parse endpoint.</p>
  *
- * Mirrors {@link com.dean.iso8583.core.emv.EmvParseResult} but lives in the web
- * layer so the core domain model remains decoupled from the HTTP transport.
+ *<p> Mirrors {@link EmvParseResult} but lives in the web
+ * layer so the core domain model remains decoupled from the HTTP transport.</p>
  *
  * @param rawHex       the original DE 55 hex string submitted by the caller
  * @param tagCount     total number of TLV elements decoded

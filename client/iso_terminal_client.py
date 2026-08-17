@@ -97,6 +97,8 @@ def parse_response_summary(resp: str):
 
     mti = resp[offset:offset + 4]
     print(f"{BOLD}MTI:{RESET} {mti}")
+
+
 def compute_bitmaps(fields: dict) -> tuple[str, str | None]:
     """Computes the primary and optional secondary 16-hex bitmaps for given field IDs."""
     field_ids = [int(f) for f in fields.keys() if int(f) >= 2]
@@ -141,17 +143,17 @@ def pack_iso(mti: str, fields: dict, header: str = DEFAULT_TPDU) -> str:
             packed += f"{val:>012}"
         elif fid == 7:  # 10-digit Date/Time
             packed += f"{val:>010}"
-        elif fid == 11: # 6-digit STAN
+        elif fid == 11:  # 6-digit STAN
             packed += f"{val:>06}"
-        elif fid == 41: # 8-char TID
+        elif fid == 41:  # 8-char TID
             packed += f"{val:<8}"
-        elif fid == 42: # 15-char MID
+        elif fid == 42:  # 15-char MID
             packed += f"{val:<15}"
-        elif fid == 49: # 3-char Currency
+        elif fid == 49:  # 3-char Currency
             packed += f"{val:>03}"
-        elif fid == 55: # LLLVAR DE 55
+        elif fid == 55:  # LLLVAR DE 55
             packed += f"{len(val):03d}{val}"
-        elif fid == 70: # 3-digit NetMgmt Code
+        elif fid == 70:  # 3-digit NetMgmt Code
             packed += f"{val:>03}"
         else:
             packed += f"{len(val):02d}{val}"
@@ -361,3 +363,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# python3 client/iso_terminal_client.py

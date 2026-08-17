@@ -9,34 +9,30 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Developer Note:
- * Enterprise Dynamic ISO 8583 Packager Spec Registry.
- * Automatically scans and loads JSON packager specification definitions from classpath:specs/*.json.
- * 
- * In an enterprise payment gateway, different acquiring hosts and card networks (e.g. Visa SMS, Mastercard IPM,
- * AS2805, APACS) require different field dictionaries, length rules, and padding strategies.
- * This registry allows payment switches to dynamically lookup or register packager dialects at runtime.
+ * <p>Enterprise Dynamic ISO 8583 Packager Spec Registry.</p>
+ * <p>Automatically scans and loads JSON packager specification definitions from classpath:specs/*.json.</p>
+ *
+ * <p>In an enterprise payment gateway, different acquiring hosts and card networks <br>(e.g. Visa SMS, Mastercard IPM,
+ * AS2805, APACS) require different field dictionaries, length rules, and padding strategies.</p>
+ * <p>This registry allows payment switches to dynamically lookup or register packager dialects at runtime.</p>
  */
-@Slf4j
 @Component
+@RequiredArgsConstructor
+@Slf4j
 public class IsoSpecRegistry {
 
-    public static final String DEFAULT_SPEC_ID = "iso8583-1987";
-
     private final ObjectMapper objectMapper;
-    private final Map<String, IsoSpecDefinition> specMap = new HashMap<>();
 
-    public IsoSpecRegistry() {
-        this(new ObjectMapper());
-    }
-
-    public IsoSpecRegistry(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
-    }
+    public static final String DEFAULT_SPEC_ID = "iso8583-1987";
+    private static final String SPEC_LOCATION = "classpath*:specs/*.json";
+    private final Map<String, IsoSpecDefinition> specMap = new ConcurrentHashMap<>();
 
     @PostConstruct
     public void init() {
@@ -44,68 +40,119 @@ public class IsoSpecRegistry {
     }
 
     /**
-     * Scans classpath:specs/*.json and loads packager definitions into memory.
+     * Scans the classpath for ISO 8583 specification files and
+     * registers them in memory.
+     *
+     * <p>Specifications are expected under:</p>
+     *
+     * <pre>
+     *  classpath:{@code specs/*.json}
+     * </pre>
      */
     public void loadClasspathSpecs() {
+        PathMatchingResourcePatternResolver resolver =
+                new PathMatchingResourcePatternResolver();
+
         try {
-            PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
-            Resource[] resources = resolver.getResources("classpath*:specs/*.json");
+            Resource[] resources = resolver.getResources(SPEC_LOCATION);
 
             for (Resource resource : resources) {
-                try (InputStream inputStream = resource.getInputStream()) {
-                    IsoSpecDefinition spec = objectMapper.readValue(inputStream, IsoSpecDefinition.class);
-                    registerSpec(spec);
-                    log.info("Successfully loaded ISO 8583 Packager Spec: {} ({}) with {} field definitions",
-                            spec.id(), spec.name(), spec.fields() != null ? spec.fields().size() : 0);
-                } catch (Exception e) {
-                    log.error("Failed to load ISO 8583 spec from resource {}", resource.getFilename(), e);
-                }
+                loadSpec(resource);
             }
-        } catch (Exception e) {
-            log.error("Error scanning ISO 8583 spec directory classpath:specs/", e);
+
+            log.info("Loaded {} ISO 8583 specification(s)", specMap.size());
+
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to scan ISO 8583 specification directory: %s"
+                    .formatted(SPEC_LOCATION), e);
+        }
+    }
+
+    private void loadSpec(Resource resource) {
+        try (InputStream inputStream = resource.getInputStream()) {
+
+            IsoSpecDefinition spec = objectMapper.readValue(inputStream, IsoSpecDefinition.class);
+
+            registerSpec(spec);
+
+            int fieldCount = spec.fields() == null ? 0 : spec.fields().size();
+
+            log.info("Loaded ISO 8583 spec: {} ({}) with {} field definitions", spec.id(), spec.name(), fieldCount);
+
+        } catch (IOException e) {
+            log.error("Failed to load ISO 8583 spec from resource {}", resource.getFilename(), e);
         }
     }
 
     /**
-     * Registers a packager specification definition dynamically.
+     * Registers an ISO 8583 specification.
+     *
+     * @param spec specification to register
      */
     public void registerSpec(IsoSpecDefinition spec) {
         Objects.requireNonNull(spec, "spec cannot be null");
+
         Objects.requireNonNull(spec.id(), "spec.id cannot be null");
-        specMap.put(spec.id().toLowerCase(Locale.ROOT), spec);
+
+        String specId = normalizeSpecId(spec.id());
+
+        specMap.put(specId, spec);
     }
 
     /**
-     * Retrieves an IsoSpecDefinition by ID.
-     * Falls back to DEFAULT_SPEC_ID ("iso8583-1987") if specified ID is null or not found.
+     * Retrieves an ISO 8583 specification by ID.
+     *
+     * <p>If the supplied ID is null, blank, or unknown,
+     * the default specification is returned.</p>
+     *
+     * @param specId specification identifier
+     * @return matching specification or the default specification
      */
     public IsoSpecDefinition getSpec(String specId) {
+
         if (specId == null || specId.isBlank()) {
             return getDefaultSpec();
         }
-        IsoSpecDefinition spec = specMap.get(specId.toLowerCase(Locale.ROOT));
+
+        String normalizedId = normalizeSpecId(specId);
+
+        IsoSpecDefinition spec = specMap.get(normalizedId);
+
         if (spec == null) {
-            log.warn("ISO 8583 Spec '{}' not found. Falling back to default '{}'", specId, DEFAULT_SPEC_ID);
+            log.warn("ISO 8583 spec '{}' not found. Falling back to '{}'", specId, DEFAULT_SPEC_ID);
+
             return getDefaultSpec();
         }
+
         return spec;
     }
 
     /**
-     * Returns the default ISO 8583:1987 specification definition.
+     * Returns the default ISO 8583:1987 specification.
+     *
+     * @throws IllegalStateException if the default specification
+     *                               has not been registered
      */
     public IsoSpecDefinition getDefaultSpec() {
         IsoSpecDefinition defaultSpec = specMap.get(DEFAULT_SPEC_ID);
+
         if (defaultSpec == null) {
-            throw new IllegalStateException("Default ISO 8583 spec 'iso8583-1987' is not registered");
+            throw new IllegalStateException("Default ISO 8583 spec '%s' is not registered".formatted(DEFAULT_SPEC_ID));
         }
+
         return defaultSpec;
     }
 
     /**
-     * Returns an unmodifiable map of all registered packager specifications.
+     * Returns all registered specifications.
+     *
+     * @return unmodifiable view of registered specifications
      */
     public Map<String, IsoSpecDefinition> getAllSpecs() {
         return Collections.unmodifiableMap(specMap);
+    }
+
+    private static String normalizeSpecId(String specId) {
+        return specId.trim().toLowerCase(Locale.ROOT);
     }
 }

@@ -15,16 +15,17 @@ public final class IsoMessageSanitizer {
     }
 
     /**
-     * Masks Primary Account Number (PAN) according to PCI-DSS rules:
-     * Shows first 6 digits (BIN) and last 4 digits, replacing middle digits with asterisks.
-     * Example: 4532015588991234 -> 453201******1234
+     *<p> Masks Primary Account Number (PAN) according to PCI-DSS rules:</p>
+     *<p> Shows first 6 digits (BIN) and last 4 digits, replacing middle digits with asterisks.</p>
+     * <p>Example: 4532015588991234 -> 453201******1234</p>
      */
     public static String maskPan(String pan) {
-        if (pan == null || pan.isEmpty()) {
-            return "";
-        }
+
+        if (pan == null || pan.isEmpty()) return "";
+
         String cleanPan = pan.trim();
         int len = cleanPan.length();
+
         if (len <= 10) {
             // Short PAN: mask all but last 4
             if (len <= 4) return "*".repeat(len);
@@ -38,14 +39,14 @@ public final class IsoMessageSanitizer {
     }
 
     /**
-     * Masks Track 2 Data (DE 35).
-     * Format: PAN = ExpirationDate + ServiceCode + DiscretionaryData
-     * Example: 4532015588991234=26121010000 -> 453201******1234=****1010000
+     * <p>Masks Track 2 Data (DE 35).</p>
+     * <p>Format: PAN = ExpirationDate + ServiceCode + DiscretionaryData</p>
+     * <p>Example: 4532015588991234=26121010000 -> 453201******1234=****1010000</p>
      */
     public static String maskTrack2(String track2) {
-        if (track2 == null || track2.isEmpty()) {
-            return "";
-        }
+
+        if (track2 == null || track2.isEmpty()) return "";
+
         int separatorIdx = track2.indexOf('=');
         if (separatorIdx == -1) {
             separatorIdx = track2.indexOf('D'); // Alternative separator character
@@ -64,9 +65,9 @@ public final class IsoMessageSanitizer {
      * Masks sensitive fields inside an IsoMessage object without mutating the original message.
      */
     public static IsoMessage sanitizeMessage(IsoMessage original) {
-        if (original == null) {
-            return null;
-        }
+
+        if (original == null) return null;
+
         IsoMessage sanitized = new IsoMessage(original.getMti());
         sanitized.setHeader(original.getHeader());
 
@@ -87,13 +88,13 @@ public final class IsoMessageSanitizer {
     }
 
     /**
-     * Unpacks a raw ISO 8583 payload string, masks all sensitive PCI data elements,
-     * and returns a clean sanitized summary string safe for logging.
+     * <p>Unpacks a raw ISO 8583 payload string, masks all sensitive PCI data elements,
+     * and returns a clean sanitized summary string safe for logging.</p>
      */
     public static String sanitizePayloadForLogging(String rawPayload, boolean hasHeader) {
-        if (rawPayload == null || rawPayload.isEmpty()) {
-            return "";
-        }
+
+        if (rawPayload == null || rawPayload.isEmpty()) return "";
+
         try {
             IsoMessage msg = IsoUnpacker.unpack(rawPayload, hasHeader);
             IsoMessage sanitized = sanitizeMessage(msg);

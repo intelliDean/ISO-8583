@@ -1,5 +1,10 @@
 package com.dean.iso8583.core.emv;
 
+import com.dean.iso8583.core.emv.dto.EmvParseResult;
+import com.dean.iso8583.core.emv.dto.EmvTag;
+import com.dean.iso8583.core.emv.enums.EmvTagName;
+import com.dean.iso8583.core.emv.exception.EmvParseException;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -54,29 +59,39 @@ public final class EmvTlvParser {
 
     // ── Bit masks & sentinel values ───────────────────────────────────────────
 
-    /** Mask to isolate bits 5-1 of a tag's first byte. All-ones signals multi-byte tag. */
+    /**
+     * Mask to isolate bits 5-1 of a tag's first byte. All-ones signals multi-byte tag.
+     */
     private static final int TAG_MULTI_BYTE_MASK = 0x1F;
 
-    /** Bit 8 of a tag continuation byte — if set the tag continues further. */
+    /**
+     * Bit 8 of a tag continuation byte — if set the tag continues further.
+     */
     private static final int TAG_CONTINUATION_BIT = 0x80;
 
-    /** Bit 8 of a length byte — if set, long-form length encoding is in use. */
+    /**
+     * Bit 8 of a length byte — if set, long-form length encoding is in use.
+     */
     private static final int LENGTH_LONG_FORM_BIT = 0x80;
 
-    /** Mask to extract the count of subsequent length bytes in long-form encoding. */
+    /**
+     * Mask to extract the count of subsequent length bytes in long-form encoding.
+     */
     private static final int LENGTH_BYTE_COUNT_MASK = 0x7F;
 
     /**
-     * Maximum permitted DE 55 length (bytes) before the parser aborts.
-     *
-     * Developer Note: The ISO 8583 field specification defines DE 55 as
+     * <p>Maximum permitted DE 55 length (bytes) before the parser aborts.</p>
+     * <p>
+     * Developer Note:
+     * <p>The ISO 8583 field specification defines DE 55 as
      * LLLVAR with max 255 bytes. We enforce this at the parser level as a
-     * first-line defence against maliciously crafted oversized payloads.
+     * first-line defense against maliciously crafted oversized payloads.</p>
      */
     private static final int MAX_DE55_BYTES = 255;
 
     // Utility class — no instances
-    private EmvTlvParser() {}
+    private EmvTlvParser() {
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Public API
@@ -130,9 +145,9 @@ public final class EmvTlvParser {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Main parse loop — iterates through the byte array consuming TLV triplets
-     * until the stream is exhausted.
-     *
+     * <p>Main parse loop — iterates through the byte array consuming TLV triplets
+     * until the stream is exhausted.</p>
+     * <p>
      * Developer Note: We deliberately do NOT recurse into constructed (template)
      * TLVs by default — the flattened view simplifies downstream ARQC validation
      * and HSM integration where individual primitive tags are required.
@@ -195,9 +210,9 @@ public final class EmvTlvParser {
     /**
      * Reads a BER-TLV tag starting at {@code cursor}.
      *
-     * <p>Single-byte tags: Most EMV tags are 1 byte (e.g. {@code 9A}, {@code 82}).
-     * Multi-byte tags: Tags like {@code 9F26} use 2+ bytes where the low 5 bits
-     * of the first byte are all 1, signalling continuation.</p>
+     * <p>Single-byte tags: Most EMV tags are 1 byte (e.g. {@code 9A}, {@code 82}).</p>
+     * <p>Multibyte tags: Tags like {@code 9F26} use 2+ bytes where the low 5 bits
+     * of the first byte are all 1, signaling continuation.</p>
      */
     private static TagReadResult readTag(byte[] bytes, int cursor) {
         assertBytesAvailable(bytes, cursor, 1, "tag");
@@ -231,7 +246,7 @@ public final class EmvTlvParser {
      * <p>Short form: single byte where bit 8 = 0 → length is bits 7-1.
      * Long form: first byte has bit 8 = 1; bits 7-1 tell how many
      * subsequent bytes encode the integer length value.</p>
-     *
+     * <p>
      * Developer Note: We cap the long-form byte count at 4 to prevent
      * crafted inputs from claiming a 2^32-byte value length.
      */
@@ -246,17 +261,7 @@ public final class EmvTlvParser {
         }
 
         // Long form — determine how many bytes encode the length
-        int lengthByteCount = firstByte & LENGTH_BYTE_COUNT_MASK;
-        if (lengthByteCount == 0) {
-            // Indefinite form (BER) — not used in EMV; treat as zero-length
-            throw new EmvParseException(
-                    "Indefinite-form length encoding is not permitted in EMV for tag " + tagHex);
-        }
-        if (lengthByteCount > 4) {
-            throw new EmvParseException(
-                    "Long-form length byte count %d exceeds maximum of 4 for tag %s"
-                            .formatted(lengthByteCount, tagHex));
-        }
+        int lengthByteCount = getLengthByteCount(tagHex, firstByte);
 
         assertBytesAvailable(bytes, cursor, lengthByteCount, "long-form length bytes for tag " + tagHex);
 
@@ -273,36 +278,47 @@ public final class EmvTlvParser {
         return new LengthReadResult(length, cursor);
     }
 
+    private static int getLengthByteCount(String tagHex, int firstByte) {
+        int lengthByteCount = firstByte & LENGTH_BYTE_COUNT_MASK;
+        if (lengthByteCount == 0) {
+            // Indefinite form (BER) — not used in EMV; treat as zero-length
+            throw new EmvParseException(
+                    "Indefinite-form length encoding is not permitted in EMV for tag " + tagHex);
+        }
+        if (lengthByteCount > 4) {
+            throw new EmvParseException(
+                    "Long-form length byte count %d exceeds maximum of 4 for tag %s"
+                            .formatted(lengthByteCount, tagHex));
+        }
+        return lengthByteCount;
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Builds a contextual description string for well-known tags.
-     * Adds interpreted meaning for critical tags (ATC, ARQC, etc.) to assist
-     * with fraud analysis dashboards and audit logging.
+     * <p>Builds a contextual description string for well-known tags.</p>
+     * <p>Adds interpreted meaning for critical tags (ATC, ARQC, etc.) to assist
+     * with fraud analysis dashboards and audit logging.</p>
      */
     private static String buildDescription(EmvTagName tag, String valueHex) {
         return switch (tag) {
-            case ARQC ->
-                    "Authorisation Request Cryptogram — must be validated by HSM before approval";
+            case ARQC -> "Authorisation Request Cryptogram — must be validated by HSM before approval";
             case APPLICATION_TRANSACTION_COUNTER ->
                     "ATC=%d (decimal) — verify monotonically increasing; reject on replay"
                             .formatted(hexToInt(valueHex));
-            case CRYPTOGRAM_INFORMATION_DATA ->
-                    describeCid(valueHex);
-            case ISSUER_APPLICATION_DATA ->
-                    "Issuer-proprietary data including offline CVR counters";
-            case CVM_RESULTS ->
-                    describeCvmResults(valueHex);
-            case TRANSACTION_TYPE ->
-                    describeTransactionType(valueHex);
-            default ->
-                    tag.getDescription();
+            case CRYPTOGRAM_INFORMATION_DATA -> describeCid(valueHex);
+            case ISSUER_APPLICATION_DATA -> "Issuer-proprietary data including offline CVR counters";
+            case CVM_RESULTS -> describeCvmResults(valueHex);
+            case TRANSACTION_TYPE -> describeTransactionType(valueHex);
+            default -> tag.getDescription();
         };
     }
 
-    /** Interprets the Cryptogram Information Data byte. */
+    /**
+     * Interprets the Cryptogram Information Data byte.
+     */
     private static String describeCid(String valueHex) {
         if (valueHex == null || valueHex.length() < 2) return "CID: unknown";
         int cid = Integer.parseInt(valueHex.substring(0, 2), 16) & 0xFF;
@@ -310,47 +326,56 @@ public final class EmvTlvParser {
             case 0b10 -> "ARQC (Authorisation Request)";
             case 0b01 -> "TC (Transaction Certificate — offline approved)";
             case 0b00 -> "AAC (Application Authentication Cryptogram — declined)";
-            default   -> "RFU (Reserved for Future Use)";
+            default -> "RFU (Reserved for Future Use)";
         };
         return "CID: %s".formatted(type);
     }
 
-    /** Interprets the 3-byte CVM Results field. */
+    /**
+     * Interprets the 3-byte CVM Results field.
+     */
     private static String describeCvmResults(String valueHex) {
         if (valueHex == null || valueHex.length() < 6) return "CVM Results: malformed";
-        String method   = valueHex.substring(0, 2);
+        String method = valueHex.substring(0, 2);
         String condition = valueHex.substring(2, 4);
-        String result   = valueHex.substring(4, 6);
+        String result = valueHex.substring(4, 6);
+
         String performed = switch (method.toUpperCase()) {
             case "1F" -> "Signature";
             case "3E" -> "Online PIN";
             case "42" -> "Offline encrypted PIN";
             case "44" -> "Offline plaintext PIN";
             case "3F" -> "No CVM performed";
-            default   -> "Method 0x" + method;
+            default -> "Method 0x" + method;
         };
         String outcome = switch (result.toUpperCase()) {
             case "02" -> "Successful";
             case "01" -> "Failed";
-            default   -> "Unknown (" + result + ")";
+            default -> "Unknown (" + result + ")";
         };
+
         return "CVM: %s | Condition: 0x%s | Result: %s".formatted(performed, condition, outcome);
     }
 
-    /** Maps the 1-byte Transaction Type code to a human-readable label. */
+    /**
+     * Maps the 1-byte Transaction Type code to a human-readable label.
+     */
     private static String describeTransactionType(String valueHex) {
         if (valueHex == null || valueHex.isBlank()) return "Transaction Type: unknown";
+
         return switch (valueHex.toUpperCase()) {
             case "00" -> "Purchase";
             case "01" -> "Cash Withdrawal (ATM)";
             case "09" -> "Purchase with Cashback";
             case "20" -> "Refund";
             case "40" -> "Balance Inquiry";
-            default   -> "Transaction Type 0x" + valueHex;
+            default -> "Transaction Type 0x" + valueHex;
         };
     }
 
-    /** Converts a hex string to its integer value (unsigned). */
+    /**
+     * Converts a hex string to its integer value (unsigned).
+     */
     private static int hexToInt(String hex) {
         try {
             return Integer.parseInt(hex, 16);
@@ -359,27 +384,27 @@ public final class EmvTlvParser {
         }
     }
 
-    /** Asserts that at least {@code required} bytes are available from {@code cursor}. */
+    /**
+     * Asserts that at least {@code required} bytes are available from {@code cursor}.
+     */
     private static void assertBytesAvailable(byte[] bytes, int cursor, int required, String context) {
-        if (cursor + required > bytes.length) {
+        if ((cursor + required) > bytes.length) {
             throw new EmvParseException(
                     "Truncated TLV stream — expected %d byte(s) for %s but only %d remain"
                             .formatted(required, context, bytes.length - cursor));
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Hex ↔ Byte conversions
-    // ─────────────────────────────────────────────────────────────────────────
-
+    /**
+     * Hex ↔ Byte conversions
+     */
     private static byte[] hexToBytes(String hex) {
         byte[] result = new byte[hex.length() / 2];
         for (int i = 0; i < hex.length(); i += 2) {
             int high = Character.digit(hex.charAt(i), 16);
-            int low  = Character.digit(hex.charAt(i + 1), 16);
+            int low = Character.digit(hex.charAt(i + 1), 16);
             if (high == -1 || low == -1) {
-                throw new EmvParseException(
-                        "Invalid hex character at position %d in: %s".formatted(i, hex));
+                throw new EmvParseException("Invalid hex character at position %d in: %s".formatted(i, hex));
             }
             result[i / 2] = (byte) ((high << 4) | low);
         }
@@ -398,9 +423,13 @@ public final class EmvTlvParser {
     // Internal result records (package-private for testability)
     // ─────────────────────────────────────────────────────────────────────────
 
-    /** Intermediate result from reading a BER-TLV tag field. */
-    record TagReadResult(String tagHex, int nextCursor) {}
+    /**
+     * Intermediate result from reading a BER-TLV tag field.
+     */
+    record TagReadResult(String tagHex, int nextCursor) { }
 
-    /** Intermediate result from reading a BER-TLV length field. */
-    record LengthReadResult(int length, int nextCursor) {}
+    /**
+     * Intermediate result from reading a BER-TLV length field.
+     */
+    record LengthReadResult(int length, int nextCursor) { }
 }

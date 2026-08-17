@@ -2,11 +2,11 @@ package com.dean.iso8583.web.data.dto;
 
 /**
  * Developer Note:
- * Request body for POST /api/iso/emv/parse.
+ * <p>Request body for POST /api/iso/emv/parse.
  *
- * {@code de55Hex} is the hex-encoded value of ISO 8583 Data Element 55
- * (ICC System Related Data) as received in the authorisation message.
- * This is a raw hex dump of the BER-TLV stream embedded in the ISO message.
+ * <p>{@code de55Hex} is the hex-encoded value of ISO 8583 Data Element 55
+ * (ICC System Related Data) as received in the authorization message.</p>
+ * <p>This is a raw hex dump of the BER-TLV stream embedded in the ISO message.</p>
  *
  * Example:
  * <pre>{@code

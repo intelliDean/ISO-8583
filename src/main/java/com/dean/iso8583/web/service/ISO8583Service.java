@@ -2,6 +2,8 @@ package com.dean.iso8583.web.service;
 
 import com.dean.iso8583.core.dto.IsoFieldDef;
 import com.dean.iso8583.core.dto.IsoSpecDefinition;
+import com.dean.iso8583.core.echo.dto.ChannelStatusReport;
+import com.dean.iso8583.core.echo.dto.EchoResult;
 import com.dean.iso8583.web.data.dto.*;
 
 import java.util.Map;
@@ -19,8 +21,8 @@ public interface ISO8583Service {
     SimulateResult simulateTransaction(SimulateRequest request);
 
     /**
-     * Parses the hex-encoded DE 55 BER-TLV stream from an EMV chip/contactless
-     * transaction into its constituent tag-length-value triplets.
+     * <p>Parses the hex-encoded DE 55 BER-TLV stream from an EMV chip/contactless
+     * transaction into its constituent tag-length-value triplets.</p>
      *
      * @param request contains the raw DE 55 hex string
      * @return structured parse result with all decoded tags and fraud signals
@@ -39,12 +41,32 @@ public interface ISO8583Service {
      *
      * @return result of the echo test execution including roundtrip latency and response code
      */
-    com.dean.iso8583.core.echo.EchoResult triggerEcho();
+    EchoResult triggerEcho();
 
     /**
      * Retrieves the current communication channel health telemetry and statistics report.
      *
      * @return channel status report
      */
-    com.dean.iso8583.core.echo.ChannelStatusReport getEchoStatus();
+    ChannelStatusReport getEchoStatus();
+
+    /**
+     * Encodes and encrypts a clear PIN into an ISO 9564 PIN block (DE 52).
+     */
+    PinEncodeResponse encodePin(PinEncodeRequest request);
+
+    /**
+     * Translates an encrypted PIN block across different key zones or block formats.
+     */
+    PinTranslateResponse translatePin(PinTranslateRequest request);
+
+    /**
+     * Calculates an ISO 9797-1 Retail MAC over an ISO 8583 message.
+     */
+    MacGenerateResponse generateMac(MacGenerateRequest request);
+
+    /**
+     * Verifies the ISO 9797-1 Retail MAC of an ISO 8583 message.
+     */
+    MacVerifyResponse verifyMac(MacVerifyRequest request);
 }

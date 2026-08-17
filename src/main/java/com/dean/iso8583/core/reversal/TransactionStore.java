@@ -64,9 +64,8 @@ public class TransactionStore {
      *
      * @param request  the original 0200 IsoMessage (request)
      * @param response the 0210 IsoMessage (response), used to extract RRN and auth code
-     * @return the newly created and stored {@link TransactionRecord}
      */
-    public TransactionRecord recordAuthorisation(IsoMessage request, IsoMessage response) {
+    public void recordAuthorisation(IsoMessage request, IsoMessage response) {
         String maskedPan = IsoMessageSanitizer.maskPan(request.getField(2));
         String stan      = request.getField(11);
 
@@ -93,7 +92,6 @@ public class TransactionStore {
         log.info("Transaction recorded — STAN={} PAN={} Amount={} State={}",
                 stan, maskedPan, record.authorisedAmount(), record.state());
 
-        return record;
     }
 
     /**

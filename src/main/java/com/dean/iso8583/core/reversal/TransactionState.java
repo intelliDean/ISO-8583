@@ -34,7 +34,6 @@ public enum TransactionState {
      * The transaction is eligible for reversal.
      */
     AUTHORISED,
-
     /**
      * A reversal request ({@code 0400}) has been received but the issuer has
      * not yet confirmed it. Retry logic applies.
@@ -43,7 +42,6 @@ public enum TransactionState {
      * the reversal advice ({@code 0420}) flow must be initiated.</p>
      */
     REVERSAL_PENDING,
-
     /**
      * The full authorised amount has been reversed.
      * No further reversals are permitted — any subsequent reversal attempt
@@ -51,14 +49,12 @@ public enum TransactionState {
      * (Duplicate Transaction).
      */
     REVERSED,
-
     /**
      * An amount less than the original authorisation has been reversed via
      * a partial reversal advice ({@code 0420}).
      * The remaining balance is still subject to capture.
      */
     PARTIALLY_REVERSED,
-
     /**
      * The original authorisation was declined.
      * Reversal is not applicable — attempting to reverse a declined

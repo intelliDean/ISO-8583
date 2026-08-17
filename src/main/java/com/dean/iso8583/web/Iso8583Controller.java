@@ -2,6 +2,8 @@ package com.dean.iso8583.web;
 
 import com.dean.iso8583.core.dto.IsoFieldDef;
 import com.dean.iso8583.core.dto.IsoSpecDefinition;
+import com.dean.iso8583.core.echo.dto.ChannelStatusReport;
+import com.dean.iso8583.core.echo.dto.EchoResult;
 import com.dean.iso8583.web.data.dto.*;
 import com.dean.iso8583.web.service.ISO8583Service;
 import lombok.RequiredArgsConstructor;
@@ -12,13 +14,15 @@ import java.util.Map;
 
 /**
  * Developer Note:
- * REST API Controller providing ISO 8583 message parsing, packing, dialect specification catalog,
- * host simulation, and EMV DE 55 BER-TLV decoding endpoints.
- *
+ * <p>REST API Controller providing ISO 8583 message parsing, packing, dialect specification catalog,
+ * host simulation, and EMV DE 55 BER-TLV decoding endpoints.</p>
+ *<ul>
  * EMV Endpoint:
- *  POST /api/iso/emv/parse — decodes raw DE 55 hex into structured TLV tags.
- *  Surfaces ARQC (9F26) and ATC (9F36) as top-level response fields for
+ *
+ *  <li>POST /api/iso/emv/parse — decodes raw DE 55 hex into structured TLV tags.</li>
+ *  <li>Surfaces ARQC (9F26) and ATC (9F36) as top-level response fields for</li>
  *  rapid fraud-signal consumption by downstream issuer systems.
+ *  </ul>
  */
 @RestController
 @RequestMapping("/api/iso")
@@ -103,7 +107,7 @@ public class Iso8583Controller {
      * @return channel status report
      */
     @GetMapping("/echo/status")
-    public ResponseEntity<com.dean.iso8583.core.echo.ChannelStatusReport> getEchoStatus() {
+    public ResponseEntity<ChannelStatusReport> getEchoStatus() {
         return ResponseEntity.ok(iso8583Service.getEchoStatus());
     }
 
@@ -116,7 +120,47 @@ public class Iso8583Controller {
      * @return echo execution result with latency and status
      */
     @PostMapping("/echo/trigger")
-    public ResponseEntity<com.dean.iso8583.core.echo.EchoResult> triggerEcho() {
+    public ResponseEntity<EchoResult> triggerEcho() {
         return ResponseEntity.ok(iso8583Service.triggerEcho());
+    }
+
+    /**
+     * POST /api/iso/crypto/pin/encode
+     *
+     * <p>Encodes and encrypts a plaintext PIN into an ISO 9564 PIN block (DE 52).</p>
+     */
+    @PostMapping("/crypto/pin/encode")
+    public ResponseEntity<PinEncodeResponse> encodePin(@RequestBody PinEncodeRequest request) {
+        return ResponseEntity.ok(iso8583Service.encodePin(request));
+    }
+
+    /**
+     * POST /api/iso/crypto/pin/translate
+     *
+     * <p>Translates an encrypted PIN block across different key zones or block formats (e.g. ISO-0 to ISO-1).</p>
+     */
+    @PostMapping("/crypto/pin/translate")
+    public ResponseEntity<PinTranslateResponse> translatePin(@RequestBody PinTranslateRequest request) {
+        return ResponseEntity.ok(iso8583Service.translatePin(request));
+    }
+
+    /**
+     * POST /api/iso/crypto/mac/generate
+     *
+     * <p>Calculates an ISO 9797-1 Retail MAC for an ISO 8583 message.</p>
+     */
+    @PostMapping("/crypto/mac/generate")
+    public ResponseEntity<MacGenerateResponse> generateMac(@RequestBody MacGenerateRequest request) {
+        return ResponseEntity.ok(iso8583Service.generateMac(request));
+    }
+
+    /**
+     * POST /api/iso/crypto/mac/verify
+     *
+     * <p>Verifies the ISO 9797-1 Retail MAC of an ISO 8583 message.</p>
+     */
+    @PostMapping("/crypto/mac/verify")
+    public ResponseEntity<MacVerifyResponse> verifyMac(@RequestBody MacVerifyRequest request) {
+        return ResponseEntity.ok(iso8583Service.verifyMac(request));
     }
 }

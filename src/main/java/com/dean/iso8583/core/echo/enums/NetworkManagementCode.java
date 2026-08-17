@@ -1,4 +1,7 @@
-package com.dean.iso8583.core.echo;
+package com.dean.iso8583.core.echo.enums;
+
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 
 /**
  * Developer Note:
@@ -10,14 +13,16 @@ package com.dean.iso8583.core.echo;
  *
  * <h2>Enterprise Relevance</h2>
  * <ul>
- *   <li>{@link #ECHO_TEST} (301) — Periodic heartbeat / ping used for dead-peer detection
+ *   <li><b>{@link #ECHO_TEST} (301) </b> — Periodic heartbeat / ping used for dead-peer detection
  *       and preventing intermediate stateful firewalls/NATs from dropping idle TCP sessions.</li>
- *   <li>{@link #LOGON} (001) / {@link #LOGOFF} (002) — Establishes or terminates the cryptographic
+ *   <li><b>{@link #LOGON} (001)</b>  / <b>{@link #LOGOFF} (002)</b>  — Establishes or terminates the cryptographic
  *       and transaction processing session between payment nodes.</li>
- *   <li>{@link #CUTOVER} (201) — Signals end-of-day batch settlement cutover and reconciliation.</li>
- *   <li>{@link #KEY_EXCHANGE} (101) — Rotates Zone Master Keys (ZMK) or Working Keys (ZPK/ZAK).</li>
+ *   <li><b>{@link #CUTOVER} (201)</b>  — Signals end-of-day batch settlement cutover and reconciliation.</li>
+ *   <li><b>{@link #KEY_EXCHANGE} (101)</b>  — Rotates Zone Master Keys (ZMK) or Working Keys (ZPK/ZAK).</li>
  * </ul>
  */
+@Getter
+@AllArgsConstructor
 public enum NetworkManagementCode {
 
     /** 001 – System Log On / Sign-On */
@@ -41,18 +46,10 @@ public enum NetworkManagementCode {
     private final String code;
     private final String description;
 
-    NetworkManagementCode(String code, String description) {
-        this.code = code;
-        this.description = description;
-    }
-
-    public String getCode() {
-        return code;
-    }
-
-    public String getDescription() {
-        return description;
-    }
+//    NetworkManagementCode(String code, String description) {
+//        this.code = code;
+//        this.description = description;
+//    }
 
     /**
      * Resolves a DE 70 code string to its {@link NetworkManagementCode} enum constant.
@@ -61,12 +58,11 @@ public enum NetworkManagementCode {
      * @return matching enum constant or {@link #UNKNOWN}
      */
     public static NetworkManagementCode fromCode(String code) {
-        if (code == null || code.isBlank()) {
-            return UNKNOWN;
-        }
-        for (NetworkManagementCode item : values()) {
-            if (item.code.equals(code.trim())) {
-                return item;
+        if (code == null || code.isBlank()) return UNKNOWN;
+
+        for (NetworkManagementCode networkMgtCode : values()) {
+            if (networkMgtCode.code.equals(code.trim())) {
+                return networkMgtCode;
             }
         }
         return UNKNOWN;

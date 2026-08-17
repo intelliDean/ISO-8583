@@ -3,7 +3,8 @@ package com.dean.iso8583.client;
 import com.dean.iso8583.core.IsoPacker;
 import com.dean.iso8583.core.IsoUnpacker;
 import com.dean.iso8583.core.dto.IsoMessage;
-import com.dean.iso8583.core.echo.NetworkManagementCode;
+import com.dean.iso8583.core.echo.enums.NetworkManagementCode;
+import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.DataInputStream;
@@ -18,42 +19,35 @@ import java.time.format.DateTimeFormatter;
 /**
  * Developer Note:
  * Standalone Java Client for connecting to the ISO 8583 TCP Server (port 8583).
- *
+ * <p>
  * Demonstrates:
- *  - 2-byte Big-Endian framing
- *  - Packing 0800 Keep-Alive Echo requests
- *  - Packing 0200 Purchase authorization requests
- *  - Packing 0400 Transaction reversals
- *  - Unpacking 0810, 0210, 0410 responses
+ * - 2-byte Big-Endian framing
+ * - Packing 0800 Keep-Alive Echo requests
+ * - Packing 0200 Purchase authorization requests
+ * - Packing 0400 Transaction reversals
+ * - Unpacking 0810, 0210, 0410 responses
  */
 @Slf4j
+@AllArgsConstructor
 public class IsoTerminalClient {
-
-    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("MMddHHmmss")
-            .withZone(ZoneOffset.UTC);
 
     private final String host;
     private final int port;
     private final String tpduHeader;
 
-    public IsoTerminalClient() {
-        this("localhost", 8583, "6000000000");
-    }
-
-    public IsoTerminalClient(String host, int port, String tpduHeader) {
-        this.host = host;
-        this.port = port;
-        this.tpduHeader = tpduHeader;
-    }
+    private static final DateTimeFormatter DATE_TIME_FORMATTER =
+            DateTimeFormatter.ofPattern("MMddHHmmss").withZone(ZoneOffset.UTC);
 
     /**
      * Sends a raw ISO payload string over TCP with 2-byte Big-Endian length header
      * and returns the unpacked response IsoMessage.
      */
     public IsoMessage send(String rawPayload) throws IOException {
-        try (Socket socket = new Socket(host, port);
-             DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-             DataInputStream in = new DataInputStream(socket.getInputStream())) {
+        try (
+                Socket socket = new Socket(this.host, this.port);
+                DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+                DataInputStream in = new DataInputStream(socket.getInputStream())
+        ) {
 
             byte[] requestBytes = rawPayload.getBytes(StandardCharsets.US_ASCII);
 
@@ -91,7 +85,14 @@ public class IsoTerminalClient {
     /**
      * Sends a 0200 Financial Purchase authorization request.
      */
-    public IsoMessage sendPurchase(String pan, String amountIso, String stan, String terminalId, String merchantId) throws IOException {
+    public IsoMessage sendPurchase(
+            String pan,
+            String amountIso,
+            String stan,
+            String terminalId,
+            String merchantId
+    ) throws IOException {
+
         IsoMessage purchase = new IsoMessage("0200");
         purchase.setHeader(tpduHeader);
         purchase.setField(2, pan);
@@ -110,7 +111,13 @@ public class IsoTerminalClient {
     /**
      * Sends a 0400 Transaction Reversal request for a prior 0200 purchase.
      */
-    public IsoMessage sendReversal(String pan, String amountIso, String stan, String terminalId, String merchantId) throws IOException {
+    public IsoMessage sendReversal(
+            String pan,
+            String amountIso,
+            String stan,
+            String terminalId,
+            String merchantId
+    ) throws IOException {
         IsoMessage reversal = new IsoMessage("0400");
         reversal.setHeader(tpduHeader);
         reversal.setField(2, pan);

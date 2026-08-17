@@ -2,8 +2,14 @@ package com.dean.iso8583.core.echo;
 
 import com.dean.iso8583.core.IsoPacker;
 import com.dean.iso8583.core.dto.IsoMessage;
+import com.dean.iso8583.core.echo.dto.ChannelStatusReport;
+import com.dean.iso8583.core.echo.dto.EchoResult;
+import com.dean.iso8583.core.echo.dto.IsoEchoProperties;
+import com.dean.iso8583.core.echo.enums.ChannelHealthStatus;
+import com.dean.iso8583.core.echo.enums.NetworkManagementCode;
 import com.dean.iso8583.web.data.dto.SimulateResult;
 import com.dean.iso8583.web.data.utils.IsoTcpClient;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -35,13 +41,12 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class IsoEchoManager {
-
-    private static final DateTimeFormatter DE7_FORMATTER = DateTimeFormatter.ofPattern("MMddHHmmss")
-            .withZone(ZoneOffset.UTC);
 
     private final IsoEchoProperties properties;
     private final IsoTcpClient tcpClient;
+
 
     private final AtomicInteger stanGenerator = new AtomicInteger(1);
     private final AtomicLong totalEchoesSent = new AtomicLong(0);
@@ -50,20 +55,23 @@ public class IsoEchoManager {
     private final AtomicInteger consecutiveFailures = new AtomicInteger(0);
 
     private final ReentrantLock statusLock = new ReentrantLock();
+
+    /**
+     * <b>volatile</b>: this variable may be accessed by multiple threads, and whenever one thread changes it, other threads must see that change.
+     */
     private volatile ChannelHealthStatus healthStatus = ChannelHealthStatus.UNKNOWN;
     private volatile Long lastLatencyMs = null;
     private volatile Instant lastEchoTime = null;
     private volatile Instant lastSuccessTime = null;
     private volatile String lastError = null;
 
-    public IsoEchoManager(IsoEchoProperties properties, IsoTcpClient tcpClient) {
-        this.properties = properties;
-        this.tcpClient = tcpClient;
-    }
+    private static final DateTimeFormatter DE7_FORMATTER =
+            DateTimeFormatter.ofPattern("MMddHHmmss").withZone(ZoneOffset.UTC);
+
 
     /**
-     * Builds and transmits an on-demand ISO 8583 0800 Echo Test request message,
-     * awaiting and validating the 0810 response.
+     * <b>triggerEcho</b>: builds and transmits an on-demand ISO 8583 {@code 0800} Echo Test request message,
+     * awaiting and validating the {@code 0810} response.
      *
      * @return structured {@link EchoResult} with latency, response codes, and telemetry
      */
@@ -89,14 +97,13 @@ public class IsoEchoManager {
     }
 
     /**
-     * Periodic scheduled heartbeat task.
+     * <b>scheduledEcho</b>: periodic scheduled heartbeat task.
      * Runs according to the configured interval when {@code iso.echo.enabled=true}.
      */
     @Scheduled(fixedDelayString = "${iso.echo.interval-seconds:30}000")
     public void scheduledEcho() {
-        if (!properties.enabled()) {
-            return;
-        }
+        if (!properties.enabled()) return;
+
         try {
             log.info("Executing scheduled ISO 8583 keep-alive echo...");
             EchoResult result = triggerEcho();
@@ -108,7 +115,7 @@ public class IsoEchoManager {
     }
 
     /**
-     * Returns an immutable snapshot report of the current channel telemetry and health status.
+     * <b>getChannelStatus</b>: returns an immutable snapshot report of the current channel telemetry and health status.
      */
     public ChannelStatusReport getChannelStatus() {
         return new ChannelStatusReport(
@@ -148,13 +155,15 @@ public class IsoEchoManager {
         log.info("ISO 8583 0800 Echo acknowledged (0810/00) — STAN={} Latency={}ms", stan, simulation.roundtripMs());
 
         return EchoResult.success(
-                simulation.roundtripMs(),
-                stan,
-                transmissionDateTime,
-                simulation.responseMti(),
-                simulation.responseCode(),
-                packedRequest,
-                simulation.responsePayload()
+                EchoResult.SuccessRequest.builder()
+                        .roundtripMs(simulation.roundtripMs())
+                        .stan(stan)
+                        .transmissionDateTime(transmissionDateTime)
+                        .responseMti(simulation.responseMti())
+                        .responseCode(simulation.responseCode())
+                        .rawRequest(packedRequest)
+                        .rawResponse(simulation.responsePayload())
+                        .build()
         );
     }
 
@@ -185,12 +194,13 @@ public class IsoEchoManager {
 
         log.warn("ISO 8583 0800 Echo failed — STAN={} Failures={} Error={}", stan, failures, errorMsg);
 
-        return EchoResult.failure(
-                simulation.roundtripMs(),
-                stan,
-                transmissionDateTime,
-                packedRequest,
-                errorMsg
+        return EchoResult.failure(EchoResult.FailureRequest.builder()
+                .roundtripMs(simulation.roundtripMs())
+                .stan(stan)
+                .transmissionDateTime(transmissionDateTime)
+                .rawRequest(packedRequest)
+                .errorMessage(errorMsg)
+                .build()
         );
     }
 

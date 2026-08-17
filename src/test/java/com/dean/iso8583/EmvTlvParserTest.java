@@ -1,6 +1,10 @@
 package com.dean.iso8583;
 
 import com.dean.iso8583.core.emv.*;
+import com.dean.iso8583.core.emv.dto.EmvParseResult;
+import com.dean.iso8583.core.emv.dto.EmvTag;
+import com.dean.iso8583.core.emv.enums.EmvTagName;
+import com.dean.iso8583.core.emv.exception.EmvParseException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -8,19 +12,22 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
 /**
- * Unit tests for the EMV BER-TLV parser engine.
+ * <p>Unit tests for the EMV BER-TLV parser engine.</p>
  *
  * Developer Note:
- * Test data is constructed from real-world EMV transaction traces.
- * Each TLV is hand-crafted so that both the encoding rules and the
- * fraud-signal extraction logic are explicitly exercised.
+ * <p>Test data is constructed from real-world EMV transaction traces.</p>
+ * <p>Each TLV is hand-crafted so that both the encoding rules and the
+ * fraud-signal extraction logic are explicitly exercised.</p>
  *
+ * <ul>
  * Test coverage:
- *  - Single-byte tags (9A, 9C)
- *  - Multi-byte tags (9F26, 9F36, 9F10, 9F37)
- *  - Short-form and long-form length encoding
- *  - ARQC / ATC extraction convenience methods
- *  - Error paths: null input, odd-length hex, oversized payload, truncated stream
+ *
+ * <li>Single-byte tags (9A, 9C)</li>
+ *  <li>Multi-byte tags (9F26, 9F36, 9F10, 9F37)</li>
+ *  <li> Short-form and long-form length encoding</li>
+ *  <li> ARQC / ATC extraction convenience methods</li>
+ * <li> Error paths: null input, odd-length hex, oversized payload, truncated stream</li>
+ *  </ul>
  */
 @DisplayName("EmvTlvParser — BER-TLV Parsing Engine")
 class EmvTlvParserTest {
@@ -29,12 +36,12 @@ class EmvTlvParserTest {
 
     /**
      * Realistic DE 55 sample containing:
-     *  9F26 08 A1B2C3D4E5F60708   — ARQC (8 bytes)
-     *  9F36 02 00E2                — ATC = 226 (decimal)
-     *  9F10 12 0110A000002A0000000000000000000000FF — IAD (18 bytes)
-     *  9C   01 00                  — Transaction Type = Purchase
-     *  9A   03 260813              — Transaction Date = 2026-08-13
-     *  9F37 04 12345678            — Unpredictable Number (4 bytes)
+     *  <li>9F26 08 A1B2C3D4E5F60708   — ARQC (8 bytes)</li>
+     *  <li>9F36 02 00E2                — ATC = 226 (decimal)</li>
+     *  <li>9F10 12 0110A000002A0000000000000000000000FF — IAD (18 bytes)</li>
+     *  <li>9C   01 00                  — Transaction Type = Purchase</li>
+     *  <li>9A   03 260813              — Transaction Date = 2026-08-13</li>
+     *  <li>9F37 04 12345678            — Unpredictable Number (4 bytes)</li>
      */
     private static final String SAMPLE_DE55 =
             "9F2608A1B2C3D4E5F60708" +

@@ -1,4 +1,4 @@
-package com.dean.iso8583.core.echo;
+package com.dean.iso8583.core.echo.enums;
 
 /**
  * Developer Note:
@@ -7,10 +7,10 @@ package com.dean.iso8583.core.echo;
  *
  * <h2>Health Evaluation States</h2>
  * <ul>
- *   <li>{@link #HEALTHY} — Consecutive successful echo responses received with acceptable roundtrip latency.</li>
- *   <li>{@link #DEGRADED} — Occasional missed echos or high latency, but below the failure threshold.</li>
- *   <li>{@link #DOWN} — Consecutive echo failures have met or exceeded the threshold. The channel is considered dead.</li>
- *   <li>{@link #UNKNOWN} — No echo message has been transmitted yet (initial startup state).</li>
+ *   <li><b>{@link #HEALTHY}</b> — Consecutive successful echo responses received with acceptable roundtrip latency.</li>
+ *   <li><b>{@link #DEGRADED}</b> — Occasional missed echos or high latency, but below the failure threshold.</li>
+ *   <li><b>{@link #DOWN}</b> — Consecutive echo failures have met or exceeded the threshold. The channel is considered dead.</li>
+ *   <li><b>{@link #UNKNOWN}</b> — No echo message has been transmitted yet (initial startup state).</li>
  * </ul>
  */
 public enum ChannelHealthStatus {

@@ -9,17 +9,20 @@ import java.util.Objects;
 
 /**
  * Developer Note:
- * Enterprise ISO 8583 Packet Serialization Engine.
- * Supports both static default packing and dynamic network packager specifications (e.g. Visa SMS, Mastercard IPM).
+ * <p>Enterprise ISO 8583 Packet Serialization Engine.</p>
+ * <p>Supports both static default packing and dynamic network packager specifications (e.g. Visa SMS, Mastercard IPM).</p>
  * 
  * Frame Format:
- * [TPDU Header (Optional)][MTI (4 Chars)][Primary Bitmap (16 Hex Chars)][Secondary Bitmap (16 Hex Chars)][Data Elements...]
- * 
+ * <p>[TPDU Header (Optional)][MTI (4 Chars)][Primary Bitmap (16 Hex Chars)][Secondary Bitmap (16 Hex Chars)][Data Elements...]</p>
+ *
+ * <ul>
  * Field Length Strategies:
- * - FIXED_NUMERIC: Left zero-padded to field max length.
- * - FIXED_ALPHA / BINARY_FIXED: Right space-padded to field max length.
- * - LLVAR: 2-digit ASCII length prefix + field value.
- * - LLLVAR: 3-digit ASCII length prefix + field value.
+ *
+ * <li>FIXED_NUMERIC: Left zero-padded to field max length.</li>
+ *  <li>FIXED_ALPHA / BINARY_FIXED: Right space-padded to field max length.</li>
+ *  <li>LLVAR: 2-digit ASCII length prefix + field value.</li>
+ *  <li>LLLVAR: 3-digit ASCII length prefix + field value.</li>
+ * </ul>
  */
 public final class IsoPacker {
 
@@ -119,7 +122,6 @@ public final class IsoPacker {
             case FIXED_ALPHA, BINARY_FIXED -> formatFixedAlpha(definition, value);
             case LLVAR_NUMERIC, LLVAR_ALPHA -> formatVariableLength(definition, value, 2);
             case LLLVAR_ALPHA -> formatVariableLength(definition, value, 3);
-            default -> formatFixedAlpha(definition, value);
         };
     }
 

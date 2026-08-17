@@ -5,30 +5,180 @@
   "description": "Mastercard CIS/IPM dual-message authorization and clearing specification",
   "defaultHeaderLength": 10,
   "fields": {
-    "1": { "fieldId": 1, "name": "Secondary Bitmap", "type": "BINARY_FIXED", "maxLength": 8, "description": "Indicates presence of DE 65-128" },
-    "2": { "fieldId": 2, "name": "Primary Account Number (PAN)", "type": "LLVAR_NUMERIC", "maxLength": 19, "description": "Mastercard PAN" },
-    "3": { "fieldId": 3, "name": "Processing Code", "type": "FIXED_NUMERIC", "maxLength": 6, "description": "Mastercard Processing Code" },
-    "4": { "fieldId": 4, "name": "Amount, Transaction", "type": "FIXED_NUMERIC", "maxLength": 12, "description": "Transaction Amount" },
-    "7": { "fieldId": 7, "name": "Transmission Date & Time", "type": "FIXED_NUMERIC", "maxLength": 10, "description": "MMDDhhmmss format" },
-    "11": { "fieldId": 11, "name": "Systems Trace Audit Number (STAN)", "type": "FIXED_NUMERIC", "maxLength": 6, "description": "Mastercard Trace Audit Number" },
-    "12": { "fieldId": 12, "name": "Time, Local Transaction", "type": "FIXED_NUMERIC", "maxLength": 6, "description": "hhmmss format" },
-    "13": { "fieldId": 13, "name": "Date, Local Transaction", "type": "FIXED_NUMERIC", "maxLength": 4, "description": "MMDD format" },
-    "14": { "fieldId": 14, "name": "Date, Expiration", "type": "FIXED_NUMERIC", "maxLength": 4, "description": "YYMM format" },
-    "22": { "fieldId": 22, "name": "Point of Service Entry Mode", "type": "FIXED_NUMERIC", "maxLength": 3, "description": "Mastercard POS Entry Mode" },
-    "32": { "fieldId": 32, "name": "Acquiring Institution ID", "type": "LLVAR_NUMERIC", "maxLength": 11, "description": "Mastercard Acquirer ICA" },
-    "35": { "fieldId": 35, "name": "Track 2 Data", "type": "LLVAR_ALPHA", "maxLength": 37, "description": "Track 2 data" },
-    "37": { "fieldId": 37, "name": "Retrieval Reference Number (RRN)", "type": "FIXED_ALPHA", "maxLength": 12, "description": "Mastercard RRN" },
-    "38": { "fieldId": 38, "name": "Authorization Code", "type": "FIXED_ALPHA", "maxLength": 6, "description": "Mastercard Approval Code" },
-    "39": { "fieldId": 39, "name": "Response Code", "type": "FIXED_ALPHA", "maxLength": 2, "description": "Mastercard Response Code" },
-    "41": { "fieldId": 41, "name": "Terminal ID", "type": "FIXED_ALPHA", "maxLength": 8, "description": "Terminal Identification" },
-    "42": { "fieldId": 42, "name": "Merchant ID", "type": "FIXED_ALPHA", "maxLength": 15, "description": "Merchant Identification" },
-    "43": { "fieldId": 43, "name": "Card Acceptor Name/Location", "type": "FIXED_ALPHA", "maxLength": 40, "description": "Merchant Name/Location" },
-    "48": { "fieldId": 48, "name": "Private Data", "type": "LLLVAR_ALPHA", "maxLength": 999, "description": "Mastercard Private Sub-element Data" },
-    "49": { "fieldId": 49, "name": "Currency Code", "type": "FIXED_NUMERIC", "maxLength": 3, "description": "Transaction Currency Code" },
-    "52": { "fieldId": 52, "name": "PIN Block Data", "type": "BINARY_FIXED", "maxLength": 8, "description": "Encrypted PIN Block" },
-    "55": { "fieldId": 55, "name": "EMV Chip Data", "type": "LLLVAR_ALPHA", "maxLength": 255, "description": "Mastercard Chip TLV Data" },
-    "70": { "fieldId": 70, "name": "Network Management Code", "type": "FIXED_NUMERIC", "maxLength": 3, "description": "NMIC" },
-    "90": { "fieldId": 90, "name": "Original Data Elements", "type": "FIXED_NUMERIC", "maxLength": 42, "description": "Original Transaction Reference" },
-    "108": { "fieldId": 108, "name": "Mastercard Advice Reason Code", "type": "LLLVAR_ALPHA", "maxLength": 100, "description": "Mastercard Merchant Advice Reason" }
+    "1": {
+      "fieldId": 1,
+      "name": "Secondary Bitmap",
+      "type": "BINARY_FIXED",
+      "maxLength": 8,
+      "description": "Indicates presence of DE 65-128"
+    },
+    "2": {
+      "fieldId": 2,
+      "name": "Primary Account Number (PAN)",
+      "type": "LLVAR_NUMERIC",
+      "maxLength": 19,
+      "description": "Mastercard PAN"
+    },
+    "3": {
+      "fieldId": 3,
+      "name": "Processing Code",
+      "type": "FIXED_NUMERIC",
+      "maxLength": 6,
+      "description": "Mastercard Processing Code"
+    },
+    "4": {
+      "fieldId": 4,
+      "name": "Amount, Transaction",
+      "type": "FIXED_NUMERIC",
+      "maxLength": 12,
+      "description": "Transaction Amount"
+    },
+    "7": {
+      "fieldId": 7,
+      "name": "Transmission Date & Time",
+      "type": "FIXED_NUMERIC",
+      "maxLength": 10,
+      "description": "MMDDhhmmss format"
+    },
+    "11": {
+      "fieldId": 11,
+      "name": "Systems Trace Audit Number (STAN)",
+      "type": "FIXED_NUMERIC",
+      "maxLength": 6,
+      "description": "Mastercard Trace Audit Number"
+    },
+    "12": {
+      "fieldId": 12,
+      "name": "Time, Local Transaction",
+      "type": "FIXED_NUMERIC",
+      "maxLength": 6,
+      "description": "hhmmss format"
+    },
+    "13": {
+      "fieldId": 13,
+      "name": "Date, Local Transaction",
+      "type": "FIXED_NUMERIC",
+      "maxLength": 4,
+      "description": "MMDD format"
+    },
+    "14": {
+      "fieldId": 14,
+      "name": "Date, Expiration",
+      "type": "FIXED_NUMERIC",
+      "maxLength": 4,
+      "description": "YYMM format"
+    },
+    "22": {
+      "fieldId": 22,
+      "name": "Point of Service Entry Mode",
+      "type": "FIXED_NUMERIC",
+      "maxLength": 3,
+      "description": "Mastercard POS Entry Mode"
+    },
+    "32": {
+      "fieldId": 32,
+      "name": "Acquiring Institution ID",
+      "type": "LLVAR_NUMERIC",
+      "maxLength": 11,
+      "description": "Mastercard Acquirer ICA"
+    },
+    "35": {
+      "fieldId": 35,
+      "name": "Track 2 Data",
+      "type": "LLVAR_ALPHA",
+      "maxLength": 37,
+      "description": "Track 2 data"
+    },
+    "37": {
+      "fieldId": 37,
+      "name": "Retrieval Reference Number (RRN)",
+      "type": "FIXED_ALPHA",
+      "maxLength": 12,
+      "description": "Mastercard RRN"
+    },
+    "38": {
+      "fieldId": 38,
+      "name": "Authorization Code",
+      "type": "FIXED_ALPHA",
+      "maxLength": 6,
+      "description": "Mastercard Approval Code"
+    },
+    "39": {
+      "fieldId": 39,
+      "name": "Response Code",
+      "type": "FIXED_ALPHA",
+      "maxLength": 2,
+      "description": "Mastercard Response Code"
+    },
+    "41": {
+      "fieldId": 41,
+      "name": "Terminal ID",
+      "type": "FIXED_ALPHA",
+      "maxLength": 8,
+      "description": "Terminal Identification"
+    },
+    "42": {
+      "fieldId": 42,
+      "name": "Merchant ID",
+      "type": "FIXED_ALPHA",
+      "maxLength": 15,
+      "description": "Merchant Identification"
+    },
+    "43": {
+      "fieldId": 43,
+      "name": "Card Acceptor Name/Location",
+      "type": "FIXED_ALPHA",
+      "maxLength": 40,
+      "description": "Merchant Name/Location"
+    },
+    "48": {
+      "fieldId": 48,
+      "name": "Private Data",
+      "type": "LLLVAR_ALPHA",
+      "maxLength": 999,
+      "description": "Mastercard Private Sub-element Data"
+    },
+    "49": {
+      "fieldId": 49,
+      "name": "Currency Code",
+      "type": "FIXED_NUMERIC",
+      "maxLength": 3,
+      "description": "Transaction Currency Code"
+    },
+    "52": {
+      "fieldId": 52,
+      "name": "PIN Block Data",
+      "type": "BINARY_FIXED",
+      "maxLength": 8,
+      "description": "Encrypted PIN Block"
+    },
+    "55": {
+      "fieldId": 55,
+      "name": "EMV Chip Data",
+      "type": "LLLVAR_ALPHA",
+      "maxLength": 255,
+      "description": "Mastercard Chip TLV Data"
+    },
+    "70": {
+      "fieldId": 70,
+      "name": "Network Management Code",
+      "type": "FIXED_NUMERIC",
+      "maxLength": 3,
+      "description": "NMIC"
+    },
+    "90": {
+      "fieldId": 90,
+      "name": "Original Data Elements",
+      "type": "FIXED_NUMERIC",
+      "maxLength": 42,
+      "description": "Original Transaction Reference"
+    },
+    "108": {
+      "fieldId": 108,
+      "name": "Mastercard Advice Reason Code",
+      "type": "LLLVAR_ALPHA",
+      "maxLength": 100,
+      "description": "Mastercard Merchant Advice Reason"
+    }
   }
 }

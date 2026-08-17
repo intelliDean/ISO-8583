@@ -1,18 +1,18 @@
-package com.dean.iso8583.core.emv;
+package com.dean.iso8583.core.emv.dto;
 
 import java.util.List;
 
 /**
- * Developer Note:
- * Immutable result container for a parsed DE 55 EMV TLV stream.
+ * Developer Note:<br>
+ * <p>Immutable result container for a parsed DE 55 EMV TLV stream.</p>
  *
- * The {@link #tags()} list preserves the original byte-order from the stream,
+ * <p>The {@link #tags()} list preserves the original byte-order from the stream,
  * which is important for ARQC cryptogram verification — the order of TLV
  * values fed into the session key derivation function is strictly defined by
- * the EMV standard.
+ * the EMV standard.</p>
  *
- * {@link #rawHex()} is retained so downstream services (e.g. HSM adapters)
- * can forward the original octets without re-encoding.
+ * <p>{@link #rawHex()} is retained so downstream services (e.g. HSM adapters)
+ * can forward the original octets without re-encoding.</p>
  *
  * @param rawHex  the original DE 55 hex string that was parsed
  * @param tags    ordered list of decoded {@link EmvTag} elements
