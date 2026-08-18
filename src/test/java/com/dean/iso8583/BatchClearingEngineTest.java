@@ -5,7 +5,13 @@ import com.dean.iso8583.core.clearing.ClearingBatch;
 import com.dean.iso8583.core.clearing.ClearingRecord;
 import com.dean.iso8583.core.clearing.InterchangeFeeCalculator;
 import com.dean.iso8583.core.dto.IsoMessage;
+import com.dean.iso8583.core.event.InMemoryOutboxEventRepository;
+import com.dean.iso8583.core.event.IsoEventPublisher;
+import com.dean.iso8583.core.lock.InMemoryDistributedLockService;
+import com.dean.iso8583.core.persistence.InMemoryClearingBatchRepository;
+import com.dean.iso8583.core.persistence.InMemoryTransactionRepository;
 import com.dean.iso8583.core.reversal.TransactionStore;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -21,8 +27,14 @@ class BatchClearingEngineTest {
 
     @BeforeEach
     void setUp() {
-        transactionStore = new TransactionStore();
-        clearingEngine = new BatchClearingEngine(transactionStore);
+        var txnRepo = new InMemoryTransactionRepository();
+        var lockService = new InMemoryDistributedLockService();
+        var outboxRepo = new InMemoryOutboxEventRepository();
+        var eventPublisher = new IsoEventPublisher(outboxRepo, new ObjectMapper());
+        var clearingRepo = new InMemoryClearingBatchRepository();
+
+        transactionStore = new TransactionStore(txnRepo, lockService, eventPublisher);
+        clearingEngine = new BatchClearingEngine(transactionStore, clearingRepo, lockService, eventPublisher);
     }
 
     private void recordSampleAuth(String stan, String pan, String amount) {

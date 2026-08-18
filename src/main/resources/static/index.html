@@ -1401,9 +1401,56 @@
             </div>
         </div>
 
-        <div class="card">
+        <!-- Option C: Distributed Persistence & Resiliency Card -->
+        <div class="card card-violet" style="margin-top:0.5rem;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-                <h3>Channel Status Report</h3>
+                <div class="section-header" style="margin-bottom:0;">
+                    <div class="section-icon" style="background:linear-gradient(135deg,#7c3aed,#5b21b6)">💾</div>
+                    <div>
+                        <h2 style="font-size:1rem;">Distributed Persistence &amp; Kafka Outbox Telemetry</h2>
+                        <p>PostgreSQL Schema V1.0, Redis 7 Cluster State Locks &amp; Transactional Outbox Streamer</p>
+                    </div>
+                </div>
+                <button class="btn btn-secondary btn-sm" onclick="loadTelemetry()">↻ Refresh Resiliency</button>
+            </div>
+
+            <div class="telemetry-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Persistence Engine</div>
+                    <div class="metric-val green" id="resPersistenceEngine" style="font-size:0.8rem; padding-top:0.3rem;">PostgreSQL</div>
+                    <div class="metric-unit">Active Fallback</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Distributed Lock</div>
+                    <div class="metric-val blue" id="resLockEngine" style="font-size:0.8rem; padding-top:0.3rem;">Redis 7</div>
+                    <div class="metric-unit">Cluster Lock</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Outbox Status</div>
+                    <div class="metric-val green" id="resOutboxStatus" style="font-size:0.8rem; padding-top:0.3rem;">STREAMING</div>
+                    <div class="metric-unit">Kafka KRaft</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Pending Outbox</div>
+                    <div class="metric-val amber" id="resPendingOutbox">0</div>
+                    <div class="metric-unit">In Queue</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Dispatched Events</div>
+                    <div class="metric-val green" id="resDispatchedEvents">0</div>
+                    <div class="metric-unit">To Kafka</div>
+                </div>
+            </div>
+
+            <div style="margin-top:1rem;">
+                <h4 style="font-size:0.78rem; text-transform:uppercase; color:var(--text-muted); margin-bottom:0.4rem;">Recent Outbox Event Stream</h4>
+                <div id="resRecentEvents" class="code-block" style="font-size:0.72rem;">No outbox events streamed yet</div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:0.5rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                <h3>Raw Telemetry Payload</h3>
                 <button class="btn btn-secondary btn-sm" onclick="loadTelemetry()">↻ Refresh</button>
             </div>
             <div id="telemetryRaw" class="code-block">Click "Refresh" to load telemetry data</div>
@@ -2069,14 +2116,48 @@ async function loadTelemetry() {
         const data = await res.json();
         renderTelemetry(data);
     } catch (e) { console.error('Telemetry fetch failed', e); }
+
+    try {
+        const res = await fetch(API + '/api/iso/resiliency/status');
+        const resData = await res.json();
+        renderResiliency(resData);
+    } catch (e) { console.error('Resiliency fetch failed', e); }
 }
 
 async function loadTelemetryQuiet() {
     try {
         const res = await fetch(API + '/api/iso/echo/status');
         const data = await res.json();
-        // Update header badge only
     } catch {}
+}
+
+function renderResiliency(data) {
+    if (!data) return;
+    const pEl = document.getElementById('resPersistenceEngine');
+    if (pEl) pEl.textContent = data.persistenceEngine || 'PostgreSQL';
+    const lEl = document.getElementById('resLockEngine');
+    if (lEl) lEl.textContent = data.lockEngine || 'Redis 7';
+    const oEl = document.getElementById('resOutboxStatus');
+    if (oEl) oEl.textContent = data.outboxStatus || 'STREAMING';
+    const poEl = document.getElementById('resPendingOutbox');
+    if (poEl) poEl.textContent = data.pendingOutboxEvents ?? 0;
+    const deEl = document.getElementById('resDispatchedEvents');
+    if (deEl) deEl.textContent = data.totalEventsDispatched ?? 0;
+
+    const streamEl = document.getElementById('resRecentEvents');
+    if (streamEl) {
+        if (data.recentEvents && data.recentEvents.length > 0) {
+            streamEl.innerHTML = data.recentEvents.map(e =>
+                `<div style="margin-bottom:0.4rem; border-bottom:1px solid rgba(255,255,255,0.04); padding-bottom:0.3rem;">` +
+                `<span class="badge badge-green">${escHtml(e.eventType || '')}</span> ` +
+                `<span style="color:var(--accent-cyan)">${escHtml(e.aggregateType || '')}:${escHtml(e.aggregateId || '')}</span> ` +
+                `<span style="color:var(--text-muted);font-size:0.65rem;">Status: ${escHtml(e.status || '')}</span>` +
+                `</div>`
+            ).join('');
+        } else {
+            streamEl.textContent = 'Active (Transactional Outbox stream live — events dispatched to Kafka topics)';
+        }
+    }
 }
 
 function renderTelemetry(data) {

@@ -1,66 +1,45 @@
 package com.dean.iso8583.core.reversal;
 
 import com.dean.iso8583.core.dto.IsoMessage;
+import com.dean.iso8583.core.event.IsoEventPublisher;
+import com.dean.iso8583.core.event.IsoEventType;
+import com.dean.iso8583.core.lock.DistributedLockService;
+import com.dean.iso8583.core.persistence.TransactionRepository;
 import com.dean.iso8583.core.utils.IsoMessageSanitizer;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Thread-safe in-memory Transaction State Store.
+ * Enterprise Transaction State Store with Distributed Locking &amp; Outbox Event Streaming.
  *
- * <h2>Purpose</h2>
- * Maintains a live map of all authorised transactions so that the
- * {@link ReversalEngine} can locate the original {@code 0200} authorisation
- * when a {@code 0400} (Reversal Request) or {@code 0420} (Reversal Advice)
- * arrives.
- *
- * <h2>Keying Strategy</h2>
- * Composite key: {@code STAN (DE 11) + ":" + masked PAN (DE 2)}.
- * This prevents collisions between different cards that share the same STAN
- * in multi-acquirer deployments where STAN counters reset daily.
- *
- * <h2>Enterprise Considerations</h2>
+ * <h2>Responsibilities</h2>
  * <ul>
- *   <li><b>Thread Safety</b>: Uses {@link ConcurrentHashMap} with
- *       {@code compute()} for atomic read-modify-write operations, ensuring
- *       no race condition between a reversal validation and state update.</li>
- *   <li><b>In-Memory Only</b>: Suitable for host simulation and integration
- *       testing. In production, replace with a Redis cluster or a
- *       transactional database with SERIALIZABLE isolation.</li>
- *   <li><b>PCI-DSS</b>: PANs are stored in masked form only. The raw PAN
- *       is masked on ingestion via {@link IsoMessageSanitizer}.</li>
- *   <li><b>Eviction</b>: This implementation has no TTL eviction. Production
- *       systems should apply a 90-day rolling window per card scheme rules.</li>
+ *   <li>Maintains state transitions (AUTHORISED &rarr; REVERSED / PARTIALLY_REVERSED / CLEARED).</li>
+ *   <li>Coordinates cluster-wide concurrency using {@link DistributedLockService}.</li>
+ *   <li>Persists audit state via {@link TransactionRepository}.</li>
+ *   <li>Emits domain events to the Transactional Outbox via {@link IsoEventPublisher}.</li>
  * </ul>
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class TransactionStore {
 
-    /**
-     * Primary store: composite key → TransactionRecord.
-     * ConcurrentHashMap provides lock-striping for high-throughput authorisation
-     * environments without a global write lock.
-     */
-    private final ConcurrentHashMap<String, TransactionRecord> store = new ConcurrentHashMap<>();
+    private final TransactionRepository transactionRepository;
+    private final DistributedLockService lockService;
+    private final IsoEventPublisher eventPublisher;
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Write operations
-    // ─────────────────────────────────────────────────────────────────────────
+    private static final long LOCK_WAIT_MS = 3000;
+    private static final long LOCK_LEASE_MS = 5000;
 
     /**
      * Records a successfully authorised transaction from a {@code 0200} request
-     * and its {@code 0210} response.
-     *
-     * <p>Developer Note: This is called by {@link ReversalEngine} immediately
-     * after an approval is issued so that subsequent reversals can always find
-     * the original record.</p>
+     * and its {@code 0210} response under a distributed lock.
      *
      * @param request  the original 0200 IsoMessage (request)
      * @param response the 0210 IsoMessage (response), used to extract RRN and auth code
@@ -68,39 +47,39 @@ public class TransactionStore {
     public void recordAuthorisation(IsoMessage request, IsoMessage response) {
         String maskedPan = IsoMessageSanitizer.maskPan(request.getField(2));
         String stan      = request.getField(11);
+        String lockKey   = "lock:stan:%s:pan:%s".formatted(stan, maskedPan);
 
-        TransactionRecord record = new TransactionRecord(
-                stan,
-                maskedPan,
-                request.getField(3),
-                request.getField(4),
-                null,                          // no reversal yet
-                request.getField(7),
-                response.getField(37),         // RRN from response
-                response.getField(38),         // auth code from response
-                request.getField(41),
-                request.getField(42),
-                request.getField(49),
-                TransactionState.AUTHORISED,
-                Instant.now(),
-                Instant.now()
-        );
+        lockService.executeWithLock(lockKey, LOCK_WAIT_MS, LOCK_LEASE_MS, () -> {
+            TransactionRecord record = new TransactionRecord(
+                    stan,
+                    maskedPan,
+                    request.getField(3),
+                    request.getField(4),
+                    null,
+                    request.getField(7),
+                    response.getField(37),
+                    response.getField(38),
+                    request.getField(41),
+                    request.getField(42),
+                    request.getField(49),
+                    TransactionState.AUTHORISED,
+                    Instant.now(),
+                    Instant.now()
+            );
 
-        String key = record.compositeKey();
-        store.put(key, record);
+            transactionRepository.save(record);
 
-        log.info("Transaction recorded — STAN={} PAN={} Amount={} State={}",
-                stan, maskedPan, record.authorisedAmount(), record.state());
+            log.info("Transaction recorded — STAN={} PAN={} Amount={} State={}",
+                    stan, maskedPan, record.authorisedAmount(), record.state());
 
+            // Emit domain event for Kafka Outbox streaming
+            eventPublisher.publish("TRANSACTION", stan, IsoEventType.TRANSACTION_AUTHORISED, record);
+            return record;
+        });
     }
 
     /**
-     * Atomically updates the state of an existing record.
-     *
-     * <p>Developer Note: Uses {@code ConcurrentHashMap.compute()} to guarantee
-     * that the check-and-update is performed without interleaving, preventing a
-     * TOCTOU (Time-Of-Check-Time-Of-Use) race condition where two concurrent
-     * reversals could both pass the "not yet reversed" check.</p>
+     * Atomically updates the state of an existing record under distributed lock.
      *
      * @param key            composite key (STAN:maskedPan)
      * @param newState       target state
@@ -112,68 +91,51 @@ public class TransactionStore {
             TransactionState newState,
             String reversedAmount
     ) {
-        TransactionRecord[] updated = new TransactionRecord[1];
+        String lockKey = "lock:txn:" + key;
 
-        store.compute(key, (k, existing) -> {
-            if (existing == null) return null;
-            updated[0] = existing.withReversalApplied(newState, reversedAmount);
-            return updated[0];
+        return lockService.executeWithLock(lockKey, LOCK_WAIT_MS, LOCK_LEASE_MS, () -> {
+            Optional<TransactionRecord> updated = transactionRepository.updateState(key, newState, reversedAmount);
+
+            updated.ifPresent(record -> {
+                log.info("Transaction state updated — Key={} NewState={} ReversedAmount={}",
+                        key, newState, reversedAmount);
+
+                IsoEventType eventType = (newState == TransactionState.REVERSED || newState == TransactionState.PARTIALLY_REVERSED)
+                        ? IsoEventType.TRANSACTION_REVERSED
+                        : IsoEventType.TRANSACTION_AUTHORISED;
+
+                eventPublisher.publish("TRANSACTION", record.stan(), eventType, record);
+            });
+
+            return updated;
         });
-
-        if (updated[0] != null) {
-            log.info("Transaction state updated — Key={} NewState={} ReversedAmount={}",
-                    key, newState, reversedAmount);
-        }
-
-        return Optional.ofNullable(updated[0]);
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Read operations
-    // ─────────────────────────────────────────────────────────────────────────
 
     /**
      * Looks up a transaction by its composite key.
-     *
-     * @param stan      DE 11 — Systems Trace Audit Number
-     * @param maskedPan masked PAN (DE 2)
-     * @return the stored record, or empty if not found
      */
     public Optional<TransactionRecord> find(String stan, String maskedPan) {
-        String key = "%s:%s".formatted(stan, maskedPan);
-        return Optional.ofNullable(store.get(key));
+        return transactionRepository.find(stan, maskedPan);
     }
 
     /**
-     * Returns an unmodifiable snapshot of all stored transactions.
-     * Used by monitoring REST endpoints.
-     *
-     * <p>Developer Note: Returns the values collection at point-in-time.
-     * This is NOT a consistent snapshot — concurrent writes may or may not
-     * be reflected depending on timing. For audit exports, prefer a
-     * dedicated read replica or a persistent store query.</p>
-     *
-     * @return unmodifiable collection of all stored records
+     * Returns a snapshot of all stored transactions.
      */
     public Collection<TransactionRecord> findAll() {
-        return Collections.unmodifiableCollection(store.values());
+        return transactionRepository.findAll();
     }
 
     /**
-     * Returns the current number of tracked transactions.
+     * Returns the total count of tracked transactions.
      */
     public int size() {
-        return store.size();
+        return transactionRepository.size();
     }
 
     /**
-     * Removes a record by composite key. Used for testing and administrative
-     * clean-up only — NOT for reversals.
-     *
-     * @param key composite key
-     * @return true if the record was removed
+     * Removes a record by composite key (for testing / admin clean-up).
      */
     public boolean remove(String key) {
-        return store.remove(key) != null;
+        return transactionRepository.delete(key);
     }
 }

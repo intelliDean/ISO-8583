@@ -1,0 +1,110 @@
+package com.dean.iso8583.core.lock;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
+
+/**
+ * High-performance thread-safe in-memory implementation of {@link DistributedLockService}.
+ *
+ * <p>Serves as the default locking engine for single-instance deployments, integration
+ * tests, and fallback when Redis is unreachable.</p>
+ */
+@Slf4j
+@Service
+public class InMemoryDistributedLockService implements DistributedLockService {
+
+    private record LockHolder(ReentrantLock lock, String token, long expiryTimeMs) {}
+
+    private final ConcurrentHashMap<String, LockHolder> locks = new ConcurrentHashMap<>();
+
+    @Override
+    public String tryAcquire(String lockKey, long waitTimeoutMs, long leaseTimeMs) {
+        String token = UUID.randomUUID().toString();
+        long deadline = System.currentTimeMillis() + waitTimeoutMs;
+
+        while (System.currentTimeMillis() <= deadline) {
+            cleanExpiredLocks();
+
+            LockHolder existing = locks.get(lockKey);
+            if (existing == null) {
+                ReentrantLock lock = new ReentrantLock();
+                try {
+                    if (lock.tryLock(Math.max(1, deadline - System.currentTimeMillis()), TimeUnit.MILLISECONDS)) {
+                        long expiry = System.currentTimeMillis() + leaseTimeMs;
+                        LockHolder holder = new LockHolder(lock, token, expiry);
+                        if (locks.putIfAbsent(lockKey, holder) == null) {
+                            log.debug("Distributed Lock Acquired: Key='{}' Token='{}' Lease={}ms", lockKey, token, leaseTimeMs);
+                            return token;
+                        } else {
+                            lock.unlock();
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            }
+
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
+
+        log.warn("Distributed Lock Acquisition Timed Out: Key='{}' WaitTimeout={}ms", lockKey, waitTimeoutMs);
+        return null;
+    }
+
+    @Override
+    public boolean release(String lockKey, String lockToken) {
+        LockHolder holder = locks.get(lockKey);
+        if (holder != null && holder.token().equals(lockToken)) {
+            locks.remove(lockKey);
+            try {
+                if (holder.lock().isHeldByCurrentThread()) {
+                    holder.lock().unlock();
+                }
+            } catch (IllegalMonitorStateException ignored) {}
+            log.debug("Distributed Lock Released: Key='{}' Token='{}'", lockKey, lockToken);
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public <T> T executeWithLock(String lockKey, long waitTimeoutMs, long leaseTimeMs, Supplier<T> action) {
+        String token = tryAcquire(lockKey, waitTimeoutMs, leaseTimeMs);
+        if (token == null) {
+            throw new LockAcquisitionException("Failed to acquire lock for key: " + lockKey + " within " + waitTimeoutMs + "ms");
+        }
+        try {
+            return action.get();
+        } finally {
+            release(lockKey, token);
+        }
+    }
+
+    private void cleanExpiredLocks() {
+        long now = System.currentTimeMillis();
+        locks.entrySet().removeIf(entry -> {
+            if (entry.getValue().expiryTimeMs() < now) {
+                log.warn("Distributed Lock Expired (TTL Exceeded): Key='{}'", entry.getKey());
+                try {
+                    if (entry.getValue().lock().isHeldByCurrentThread()) {
+                        entry.getValue().lock().unlock();
+                    }
+                } catch (Exception ignored) {}
+                return true;
+            }
+            return false;
+        });
+    }
+}

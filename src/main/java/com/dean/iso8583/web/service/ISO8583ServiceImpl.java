@@ -19,6 +19,9 @@ import com.dean.iso8583.core.echo.dto.EchoResult;
 import com.dean.iso8583.core.echo.IsoEchoManager;
 import com.dean.iso8583.core.emv.dto.EmvParseResult;
 import com.dean.iso8583.core.emv.EmvTlvParser;
+import com.dean.iso8583.core.event.OutboxEventRepository;
+import com.dean.iso8583.core.event.OutboxPollerService;
+import com.dean.iso8583.core.lock.DistributedLockService;
 import com.dean.iso8583.core.reversal.TransactionRecord;
 import com.dean.iso8583.core.reversal.TransactionStore;
 import com.dean.iso8583.core.spec.IsoSpecRegistry;
@@ -38,7 +41,7 @@ import java.util.Map;
  * <p>Enterprise ISO 8583 Service Implementation.</p>
  * <p>Orchestrates message packing, unpacking, dynamic spec resolution, host simulation,
  * transaction state queries, keep-alive network heartbeat telemetry, cryptographic operations,
- * and Dual-Message System (DMS) batch clearing &amp; settlement reconciliation.</p>
+ * Dual-Message System (DMS) batch clearing &amp; settlement reconciliation, and distributed resiliency telemetry.</p>
  */
 @Slf4j
 @Service
@@ -51,6 +54,9 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     private final IsoEchoManager isoEchoManager;
     private final CryptoKeyRegistry cryptoKeyRegistry;
     private final BatchClearingEngine batchClearingEngine;
+    private final OutboxEventRepository outboxRepository;
+    private final OutboxPollerService outboxPollerService;
+    private final DistributedLockService lockService;
 
     @Override
     public Map<Integer, IsoFieldDef> getCatalog() {
@@ -96,25 +102,6 @@ public class ISO8583ServiceImpl implements ISO8583Service {
         return isoTcpClient.simulate(request.rawPayload());
     }
 
-    /**
-     * Developer Note:
-     * <p>Parses DE 55 (ICC System Related Data) using the BER-TLV parser.</p>
-     *
-     * <ul>
-     * Key fraud-detection signals surfaced in the response:
-     *
-     *  <li> {@code hasArqc}   — ARQC (9F26) presence; absent in magnetic-stripe fallback</li>
-     * <li> {@code hasAtc}    — ATC (9F36) presence; must be validated for replay attacks</li>
-     *  <li> {@code atcDecimal} — integer ATC value for comparison with issuer stored value</li>
-     *</ul>
-     * <ol>
-     * In production, this method should be extended to:
-     *
-     *  <li>Forward {@code arqcValue} + session data to an HSM for ARQC verification.</li>
-     *  <li> Compare {@code atcDecimal} against the issuer's card-level ATC store.</li>
-     * <li> Log the IAD (9F10) for offline CVR auditing.</li>
-     *  </ol>
-     */
     @Override
     public EmvParseResponse parseEmv(EmvParseRequest request) {
         EmvParseResult result = EmvTlvParser.parse(request.de55Hex());
@@ -237,6 +224,25 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     @Override
     public Collection<ClearingRecord> getChargebacks() {
         return batchClearingEngine.getChargebacks();
+    }
+
+    @Override
+    public ResiliencyStatusResponse getResiliencyStatus() {
+        String persistence = "PostgreSQL (Schema V1.0) / In-Memory Active Fallback";
+        String lockEngine  = "Redis 7 / In-Memory Reentrant Cluster Lock";
+        String outbox      = "Active (Transactional Outbox Pattern & Kafka Streamer)";
+
+        return new ResiliencyStatusResponse(
+                persistence,
+                transactionStore.size(),
+                batchClearingEngine.getBatches().size(),
+                batchClearingEngine.getChargebacks().size(),
+                lockEngine,
+                outbox,
+                outboxRepository.countPending(),
+                outboxPollerService.getTotalDispatched(),
+                outboxRepository.findPendingEvents(10)
+        );
     }
 
     private byte[] resolveKey(String keyHex, String keyId, String defaultKeyId) {

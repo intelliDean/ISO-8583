@@ -94,4 +94,9 @@ public interface ISO8583Service {
      * Retrieves all filed chargeback records.
      */
     java.util.Collection<com.dean.iso8583.core.clearing.ClearingRecord> getChargebacks();
+
+    /**
+     * Retrieves distributed persistence, distributed locking, and Kafka Outbox telemetry.
+     */
+    ResiliencyStatusResponse getResiliencyStatus();
 }

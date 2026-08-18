@@ -1,11 +1,16 @@
 package com.dean.iso8583;
 
 import com.dean.iso8583.core.dto.IsoMessage;
+import com.dean.iso8583.core.event.InMemoryOutboxEventRepository;
+import com.dean.iso8583.core.event.IsoEventPublisher;
+import com.dean.iso8583.core.lock.InMemoryDistributedLockService;
+import com.dean.iso8583.core.persistence.InMemoryTransactionRepository;
 import com.dean.iso8583.core.reversal.ReversalEngine;
 import com.dean.iso8583.core.reversal.TransactionRecord;
 import com.dean.iso8583.core.reversal.TransactionState;
 import com.dean.iso8583.core.reversal.TransactionStore;
 import com.dean.iso8583.server.IsoMessageProcessor;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -31,7 +36,12 @@ class ReversalEngineTest {
 
     @BeforeEach
     void setUp() {
-        transactionStore = new TransactionStore();
+        var txnRepo = new InMemoryTransactionRepository();
+        var lockService = new InMemoryDistributedLockService();
+        var outboxRepo = new InMemoryOutboxEventRepository();
+        var eventPublisher = new IsoEventPublisher(outboxRepo, new ObjectMapper());
+
+        transactionStore = new TransactionStore(txnRepo, lockService, eventPublisher);
         reversalEngine = new ReversalEngine(transactionStore);
         messageProcessor = new IsoMessageProcessor(reversalEngine);
     }

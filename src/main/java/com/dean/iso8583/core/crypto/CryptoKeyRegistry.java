@@ -1,6 +1,9 @@
 package com.dean.iso8583.core.crypto;
 
+import com.dean.iso8583.core.event.IsoEventPublisher;
+import com.dean.iso8583.core.event.IsoEventType;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -29,12 +32,20 @@ public class CryptoKeyRegistry {
 
     private final ConcurrentHashMap<String, byte[]> keys = new ConcurrentHashMap<>();
 
+    @Autowired(required = false)
+    private IsoEventPublisher eventPublisher;
+
     public CryptoKeyRegistry() {
         // Initialize standard default test keys for simulated development environment
-        registerKey("DEFAULT_ZPK_ACQ", CryptoUtils.hexToBytes("0123456789ABCDEFFEDCBA9876543210"));
-        registerKey("DEFAULT_ZPK_ISS", CryptoUtils.hexToBytes("FEDCBA98765432100123456789ABCDEF"));
-        registerKey("DEFAULT_MAK",     CryptoUtils.hexToBytes("0123456789ABCDEFFEDCBA9876543210"));
-        registerKey("DEFAULT_BDK",     CryptoUtils.hexToBytes("0123456789ABCDEFFEDCBA9876543210"));
+        registerKeyInternal("DEFAULT_ZPK_ACQ", CryptoUtils.hexToBytes("0123456789ABCDEFFEDCBA9876543210"));
+        registerKeyInternal("DEFAULT_ZPK_ISS", CryptoUtils.hexToBytes("FEDCBA98765432100123456789ABCDEF"));
+        registerKeyInternal("DEFAULT_MAK",     CryptoUtils.hexToBytes("0123456789ABCDEFFEDCBA9876543210"));
+        registerKeyInternal("DEFAULT_BDK",     CryptoUtils.hexToBytes("0123456789ABCDEFFEDCBA9876543210"));
+    }
+
+    private void registerKeyInternal(String keyId, byte[] keyBytes) {
+        keys.put(keyId.toUpperCase(), keyBytes);
+        log.info("Registered cryptographic key '{}' ({} bytes)", keyId.toUpperCase(), keyBytes.length);
     }
 
     /**
@@ -47,8 +58,14 @@ public class CryptoKeyRegistry {
         if (keyId == null || keyId.isBlank() || keyBytes == null) {
             throw new IllegalArgumentException("Key ID and key material must not be null or empty");
         }
-        keys.put(keyId.toUpperCase(), keyBytes);
-        log.info("Registered cryptographic key '{}' ({} bytes)", keyId.toUpperCase(), keyBytes.length);
+        String normalizedId = keyId.toUpperCase();
+        keys.put(normalizedId, keyBytes);
+        log.info("Registered cryptographic key '{}' ({} bytes)", normalizedId, keyBytes.length);
+
+        if (eventPublisher != null) {
+            eventPublisher.publish("CRYPTO_KEY", normalizedId, IsoEventType.CRYPTO_KEY_ROTATED,
+                    Map.of("keyId", normalizedId, "keyLengthBytes", keyBytes.length));
+        }
     }
 
     /**

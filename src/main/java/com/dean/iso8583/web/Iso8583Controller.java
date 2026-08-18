@@ -220,4 +220,14 @@ public class Iso8583Controller {
     public ResponseEntity<java.util.Collection<com.dean.iso8583.core.clearing.ClearingRecord>> getChargebacks() {
         return ResponseEntity.ok(iso8583Service.getChargebacks());
     }
+
+    /**
+     * GET /api/iso/resiliency/status
+     *
+     * <p>Returns distributed persistence, distributed locking, and Kafka Outbox telemetry.</p>
+     */
+    @GetMapping("/resiliency/status")
+    public ResponseEntity<com.dean.iso8583.web.data.dto.ResiliencyStatusResponse> getResiliencyStatus() {
+        return ResponseEntity.ok(iso8583Service.getResiliencyStatus());
+    }
 }
