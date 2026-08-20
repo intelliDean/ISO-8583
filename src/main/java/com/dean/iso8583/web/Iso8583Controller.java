@@ -167,6 +167,42 @@ public class Iso8583Controller {
     }
 
     /**
+     * POST /api/iso/crypto/dukpt/derive-ipek
+     *
+     * <p>Derives the Initial PIN Encryption Key (IPEK) from BDK and KSN.</p>
+     */
+    @PostMapping("/crypto/dukpt/derive-ipek")
+    public ResponseEntity<com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveIpekResponse> deriveDukptIpek(
+            @RequestBody com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveIpekRequest request
+    ) {
+        return ResponseEntity.ok(iso8583Service.deriveDukptIpek(request));
+    }
+
+    /**
+     * POST /api/iso/crypto/dukpt/derive-key
+     *
+     * <p>Derives the current Transaction Key and key variants (PEK, MAK, DEK) from BDK and KSN.</p>
+     */
+    @PostMapping("/crypto/dukpt/derive-key")
+    public ResponseEntity<com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveKeyResponse> deriveDukptKey(
+            @RequestBody com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveKeyRequest request
+    ) {
+        return ResponseEntity.ok(iso8583Service.deriveDukptKey(request));
+    }
+
+    /**
+     * POST /api/iso/crypto/dukpt/decrypt-pin
+     *
+     * <p>Decrypts an ANSI X9.24 DUKPT-encrypted PIN block using BDK and KSN.</p>
+     */
+    @PostMapping("/crypto/dukpt/decrypt-pin")
+    public ResponseEntity<com.dean.iso8583.core.crypto.dto.DukptDtos.DecryptDukptPinResponse> decryptDukptPin(
+            @RequestBody com.dean.iso8583.core.crypto.dto.DukptDtos.DecryptDukptPinRequest request
+    ) {
+        return ResponseEntity.ok(iso8583Service.decryptDukptPin(request));
+    }
+
+    /**
      * POST /api/iso/clearing/batch/generate
      *
      * <p>Generates an end-of-day Dual-Message System (DMS) 1240 settlement clearing batch

@@ -2,225 +2,231 @@ package com.dean.iso8583.core.crypto;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Arrays;
+
 /**
- * Enterprise ANSI X9.24-1 DUKPT (Derived Unique Key Per Transaction) Key Management Engine.
+ * Developer Note:
+ * Industry-standard ANSI X9.24-1:2009 / 2017 DUKPT (Derived Unique Key Per Transaction) Key Management Engine.
  *
- * <h2>What is DUKPT?</h2>
- * DUKPT is the gold standard point-of-sale key management protocol specified in ANSI X9.24-1.
- * It ensures that every single transaction processed by a physical PIN pad or POS terminal is
- * encrypted using a unique, one-time session key. Even if an attacker compromises a terminal's
- * current key register, they cannot derive past keys or decrypt previous transactions (forward secrecy).
- *
- * <h2>KSN (Key Serial Number) Structure (10 Bytes / 20 Hex Chars)</h2>
- * <pre>
- *   [Key Set ID / Base Key ID: 6 Bytes] [Device ID: 1.5 Bytes] [Transaction Counter: 21 Bits]
- * </pre>
- *
- * <h2>Key Types Derived</h2>
+ * <h2>DUKPT Architecture &amp; Key Lifecycle</h2>
  * <ul>
- *   <li><b>PIN Encryption Key (PEK)</b>: Used to decrypt DE 52 in POS transactions.</li>
- *   <li><b>Data Encryption Key (DEK)</b>: Used for field-level cardholder track data encryption.</li>
- *   <li><b>MAC Key (MAK)</b>: Used for ISO 9797 message authentication code generation.</li>
+ *   <li><b>BDK (Base Derivation Key)</b>: 16-byte Double-Length 3DES key securely injected in payment switches/HSM.</li>
+ *   <li><b>KSN (Key Serial Number)</b>: 10-byte identifier (59-bit Key Set + Device ID, 21-bit Transaction Counter).</li>
+ *   <li><b>IPEK (Initial PIN Encryption Key)</b>: Derived once per POS device using BDK and masked KSN.</li>
+ *   <li><b>Transaction Working Keys</b>: Non-reversible forward-secure tree derivation for each transaction.</li>
+ *   <li><b>Key Variants</b>:
+ *     <ul>
+ *       <li>{@code PEK (PIN Encryption)}: {@code TxnKey ^ 00000000000000FF00000000000000FF}</li>
+ *       <li>{@code MAK (MAC Calculation)}: {@code TxnKey ^ 000000000000FF00000000000000FF00}</li>
+ *       <li>{@code DEK (Data Encryption)}: {@code TxnKey ^ 0000000000FF00000000000000FF0000}</li>
+ *     </ul>
+ *   </li>
  * </ul>
  */
-
 @Slf4j
 public final class DukptEngine {
 
-    // Standard ANSI X9.24-1 Variant Masks
-    private static final byte[] PIN_VARIANT_MASK = CryptoUtils.hexToBytes("00000000000000FF00000000000000FF");
-    private static final byte[] MAC_VARIANT_MASK = CryptoUtils.hexToBytes("000000000000FF00000000000000FF00");
-    private static final byte[] DATA_VARIANT_MASK = CryptoUtils.hexToBytes("0000000000FF00000000000000FF0000");
+    public static final byte[] PIN_KEY_VARIANT_MASK  = CryptoUtils.hexToBytes("00000000000000FF00000000000000FF");
+    public static final byte[] MAC_KEY_VARIANT_MASK  = CryptoUtils.hexToBytes("000000000000FF00000000000000FF00");
+    public static final byte[] DATA_KEY_VARIANT_MASK = CryptoUtils.hexToBytes("0000000000FF00000000000000FF0000");
 
-    private static final byte[] BDK_MASK = CryptoUtils.hexToBytes("C0C0C0C000000000C0C0C0C000000000");
-    private static final byte[] KEY_REGISTER_MASK = CryptoUtils.hexToBytes("C0C0C0C000000000C0C0C0C000000000");
-
-    private static final int BDK_LENGTH = 16;
-    private static final int KSN_LENGTH = 10;
-    private static final int HALF_KEY_LENGTH = 8;
-    private static final long COUNTER_MSB_MASK = 0x100000L; // 21st bit (MSB of counter)
+    private static final byte[] BDK_MASK     = CryptoUtils.hexToBytes("C0C0C0C000000000C0C0C0C000000000");
+    private static final byte[] KEY_GEN_MASK = CryptoUtils.hexToBytes("C0C0C0C000000000C0C0C0C000000000");
 
     private DukptEngine() {
         // Utility class
     }
 
     /**
-     * Derives the Initial PIN Encryption Key (IPEK) from a Base Derivation Key (BDK) and KSN.
+     * Derives Initial PIN Encryption Key (IPEK) from BDK and KSN according to ANSI X9.24 Section A.4.
      *
-     * @param bdk double-length 16-byte BDK (Base Derivation Key)
-     * @param ksn 10-byte (20-hex) Key Serial Number
+     * @param bdk 16-byte Base Derivation Key
+     * @param ksn 10-byte Key Serial Number
      * @return 16-byte IPEK
      */
-    public static byte[] deriveIPEK(byte[] bdk, byte[] ksn) {
+    public static byte[] deriveIpek(byte[] bdk, byte[] ksn) {
         validateBdk(bdk);
         validateKsn(ksn);
 
-        byte[] baseKsn = computeBaseKsn(ksn);
+        byte[] ksnMasked = maskKsn(ksn);
+        byte[] ksn8 = new byte[8];
+        System.arraycopy(ksnMasked, 0, ksn8, 0, 8);
 
-        // Left half of IPEK = 3DES(baseKsn) under BDK
-        byte[] leftIpek = CryptoUtils.desEncryptEcb(baseKsn, bdk);
+        // Left half: 3DES encrypt with BDK
+        byte[] ipekLeft = CryptoUtils.desEncryptEcb(ksn8, bdk);
 
-        // Right half of IPEK = 3DES(baseKsn) under (BDK XOR BDK_MASK)
+        // Right half: 3DES encrypt with (BDK XOR BDK_MASK)
         byte[] bdkXor = CryptoUtils.xor(bdk, BDK_MASK);
-        byte[] rightIpek = CryptoUtils.desEncryptEcb(baseKsn, bdkXor);
+        byte[] ipekRight = CryptoUtils.desEncryptEcb(ksn8, bdkXor);
 
-        return combineHalves(leftIpek, rightIpek);
-    }
-
-    private static void validateBdk(byte[] bdk) {
-        if (bdk.length != BDK_LENGTH) {
-            throw new IllegalArgumentException("BDK must be 16 bytes (Double-Length Triple-DES key)");
-        }
-    }
-
-    private static void validateKsn(byte[] ksn) {
-        if (ksn.length != KSN_LENGTH) {
-            throw new IllegalArgumentException("KSN must be exactly 10 bytes (20 hex characters)");
-        }
+        byte[] ipek = new byte[16];
+        System.arraycopy(ipekLeft, 0, ipek, 0, 8);
+        System.arraycopy(ipekRight, 0, ipek, 8, 8);
+        return ipek;
     }
 
     /**
-     * Masks out the bottom 21 bits (transaction counter) of the 10-byte KSN to get the Base KSN (8 bytes).
-     */
-    private static byte[] computeBaseKsn(byte[] ksn) {
-        byte[] baseKsn = new byte[8];
-        System.arraycopy(ksn, 0, baseKsn, 0, 8);
-        baseKsn[7] &= (byte) 0xE0; // zero bottom 21 bits (last 5 bits of byte 7 + bytes 8, 9)
-        return baseKsn;
-    }
-
-    /**
-     * Derives the transaction-specific Future Key from an IPEK and transaction KSN.
+     * Derives current Transaction Key from IPEK and KSN via non-reversible key generation tree.
      *
-     * @param ipek 16-byte IPEK
-     * @param ksn  10-byte KSN containing the device transaction counter
-     * @return 16-byte transaction-specific future key
+     * @param ipek 16-byte Initial PIN Encryption Key
+     * @param ksn  10-byte Key Serial Number with active transaction counter
+     * @return 16-byte Transaction Key
      */
     public static byte[] deriveTransactionKey(byte[] ipek, byte[] ksn) {
-        long counter = extractTransactionCounter(ksn);
-        byte[] currentKey = ipek.clone();
-        byte[] r8 = initializeCounterRegister(ksn);
+        validateIpek(ipek);
+        validateKsn(ksn);
 
-        // Propagate non-reversible key generation function for each set bit in counter
-        for (long mask = COUNTER_MSB_MASK; mask > 0; mask >>= 1) {
-            if ((counter & mask) != 0) {
-                setRegisterBit(r8, mask);
-                currentKey = nonReversibleKeyGeneration(currentKey, r8);
+        byte[] currentKsn = maskKsn(ksn);
+        byte[] currentKey = Arrays.copyOf(ipek, ipek.length);
+
+        long counter = extractTransactionCounter(ksn);
+        long bitMask = 0x100000L; // 21-bit counter MSB (bit 20)
+
+        while (bitMask > 0) {
+            if ((counter & bitMask) != 0) {
+                // Set active bit in currentKsn
+                currentKsn[7] |= (byte) ((bitMask >> 16) & 0x1F);
+                currentKsn[8] |= (byte) ((bitMask >> 8) & 0xFF);
+                currentKsn[9] |= (byte) (bitMask & 0xFF);
+
+                currentKey = nonReversibleKeyGeneration(currentKey, currentKsn);
             }
+            bitMask >>= 1;
         }
 
         return currentKey;
     }
 
     /**
-     * Builds the initial 8-byte working counter register from the KSN's transaction-counter bytes.
+     * ANSI X9.24 Non-Reversible Key Generation Function (Generate Next Intermediate Key).
      */
-    private static byte[] initializeCounterRegister(byte[] ksn) {
-        byte[] r8 = new byte[8];
-        System.arraycopy(ksn, 2, r8, 0, 6);
-        r8[5] &= (byte) 0xE0;
-        return r8;
+    public static byte[] nonReversibleKeyGeneration(byte[] key, byte[] ksn) {
+        byte[] ksn8 = new byte[8];
+        System.arraycopy(ksn, 2, ksn8, 0, 8); // Last 8 bytes of 10-byte KSN
+
+        byte[] keyLeft = Arrays.copyOfRange(key, 0, 8);
+        byte[] keyRight = Arrays.copyOfRange(key, 8, 16);
+
+        // Step 1: msg = R_8 XOR K_R
+        byte[] msg1 = CryptoUtils.xor(ksn8, keyRight);
+        // Step 2: Single-DES encrypt msg with K_L
+        byte[] temp1 = CryptoUtils.desEncryptEcb(msg1, keyLeft);
+        // Step 3: new_right = temp1 XOR K_R
+        byte[] newRight = CryptoUtils.xor(temp1, keyRight);
+
+        // Step 4: Masked key
+        byte[] keyMasked = CryptoUtils.xor(key, KEY_GEN_MASK);
+        byte[] keyMaskedLeft = Arrays.copyOfRange(keyMasked, 0, 8);
+        byte[] keyMaskedRight = Arrays.copyOfRange(keyMasked, 8, 16);
+
+        // Step 5: msg2 = R_8 XOR K_masked_R
+        byte[] msg2 = CryptoUtils.xor(ksn8, keyMaskedRight);
+        // Step 6: Single-DES encrypt msg2 with K_masked_L
+        byte[] temp2 = CryptoUtils.desEncryptEcb(msg2, keyMaskedLeft);
+        // Step 7: new_left = temp2 XOR K_masked_R
+        byte[] newLeft = CryptoUtils.xor(temp2, keyMaskedRight);
+
+        byte[] nextKey = new byte[16];
+        System.arraycopy(newLeft, 0, nextKey, 0, 8);
+        System.arraycopy(newRight, 0, nextKey, 8, 8);
+        return nextKey;
     }
 
     /**
-     * Sets the bit corresponding to {@code mask} in the working counter register.
+     * Derives PIN Encryption Key (PEK) variant from transaction key.
      */
-    private static void setRegisterBit(byte[] r8, long mask) {
-        r8[5] |= (byte) ((mask >> 16) & 0x1F);
-        r8[6] = (byte) ((mask >> 8) & 0xFF);
-        r8[7] = (byte) (mask & 0xFF);
+    public static byte[] derivePinKey(byte[] transactionKey) {
+        return CryptoUtils.xor(transactionKey, PIN_KEY_VARIANT_MASK);
     }
 
     /**
-     * Derives the Session PIN Encryption Key (PEK) for a transaction.
-     *
-     * @param bdk 16-byte Base Derivation Key
-     * @param ksn 10-byte KSN
-     * @return 16-byte session PIN key
+     * Derives Message Authentication Key (MAK) variant from transaction key.
      */
-    public static byte[] derivePinKey(byte[] bdk, byte[] ksn) {
-        return deriveSessionKey(bdk, ksn, PIN_VARIANT_MASK);
+    public static byte[] deriveMacKey(byte[] transactionKey) {
+        return CryptoUtils.xor(transactionKey, MAC_KEY_VARIANT_MASK);
     }
 
     /**
-     * Derives the Session MAC Key (MAK) for a transaction.
-     *
-     * @param bdk 16-byte Base Derivation Key
-     * @param ksn 10-byte KSN
-     * @return 16-byte session MAC key
+     * Derives Data Encryption Key (DEK) variant from transaction key.
      */
-    public static byte[] deriveMacKey(byte[] bdk, byte[] ksn) {
-        return deriveSessionKey(bdk, ksn, MAC_VARIANT_MASK);
+    public static byte[] deriveDataKey(byte[] transactionKey) {
+        return CryptoUtils.xor(transactionKey, DATA_KEY_VARIANT_MASK);
     }
 
     /**
-     * Derives the Session Data Encryption Key (DEK) for a transaction.
-     *
-     * @param bdk 16-byte Base Derivation Key
-     * @param ksn 10-byte KSN
-     * @return 16-byte session Data key
+     * Masks out the 21-bit transaction counter from a 10-byte KSN (zeroes low 21 bits).
      */
-    public static byte[] deriveDataKey(byte[] bdk, byte[] ksn) {
-        return deriveSessionKey(bdk, ksn, DATA_VARIANT_MASK);
+    public static byte[] maskKsn(byte[] ksn) {
+        byte[] masked = Arrays.copyOf(ksn, 10);
+        masked[7] &= (byte) 0xE0; // Zero out low 5 bits
+        masked[8] = 0x00;
+        masked[9] = 0x00;
+        return masked;
     }
 
     /**
-     * Shared derivation path for PIN/MAC/Data session keys: IPEK -> transaction key -> variant XOR.
-     * The three public derive*Key methods differ only in which variant mask is applied.
-     */
-    private static byte[] deriveSessionKey(byte[] bdk, byte[] ksn, byte[] variantMask) {
-        byte[] ipek = deriveIPEK(bdk, ksn);
-        byte[] transKey = deriveTransactionKey(ipek, ksn);
-        return CryptoUtils.xor(transKey, variantMask);
-    }
-
-    /**
-     * Extracts the 21-bit numeric transaction counter from a 10-byte KSN.
+     * Extracts the 21-bit integer transaction counter from a 10-byte KSN.
      */
     public static long extractTransactionCounter(byte[] ksn) {
-        long b7 = ksn[7] & 0x1F;
-        long b8 = ksn[8] & 0xFF;
-        long b9 = ksn[9] & 0xFF;
-        return (b7 << 16) | (b8 << 8) | b9;
+        validateKsn(ksn);
+        return (((long) (ksn[7] & 0x1F)) << 16) | (((long) (ksn[8] & 0xFF)) << 8) | ((long) (ksn[9] & 0xFF));
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Non-Reversible Key Generation Function (ANSI X9.24 § A.1.4)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private static byte[] nonReversibleKeyGeneration(byte[] key, byte[] r8) {
-        byte[] leftKey = leftHalf(key);
-        byte[] rightKey = rightHalf(key);
-
-        // Message = rightKey XOR r8
-        byte[] msg = CryptoUtils.xor(rightKey, r8);
-
-        // DES encrypt msg under leftKey
-        byte[] newRight = CryptoUtils.xor(CryptoUtils.desEncryptEcb(msg, leftKey), rightKey);
-
-        // Left key XOR with variant mask
-        byte[] leftKeyXor = leftHalf(CryptoUtils.xor(key, KEY_REGISTER_MASK));
-        byte[] newLeft = CryptoUtils.xor(CryptoUtils.desEncryptEcb(msg, leftKeyXor), leftKey);
-
-        return combineHalves(newLeft, newRight);
+    /**
+     * Extracts Key Set ID (KSI) hex from KSN.
+     */
+    public static String extractKeySetId(byte[] ksn) {
+        validateKsn(ksn);
+        return CryptoUtils.bytesToHex(Arrays.copyOfRange(ksn, 0, 3));
     }
 
-    private static byte[] leftHalf(byte[] key) {
-        byte[] left = new byte[HALF_KEY_LENGTH];
-        System.arraycopy(key, 0, left, 0, HALF_KEY_LENGTH);
-        return left;
+    /**
+     * Extracts Device ID hex from KSN.
+     */
+    public static String extractDeviceId(byte[] ksn) {
+        validateKsn(ksn);
+        return CryptoUtils.bytesToHex(Arrays.copyOfRange(ksn, 3, 7));
     }
 
-    private static byte[] rightHalf(byte[] key) {
-        byte[] right = new byte[HALF_KEY_LENGTH];
-        System.arraycopy(key, HALF_KEY_LENGTH, right, 0, HALF_KEY_LENGTH);
-        return right;
+    /**
+     * End-to-end DUKPT PIN decryption: derives PEK from BDK + KSN and decrypts the PIN block.
+     *
+     * @param bdk                  16-byte Base Derivation Key
+     * @param ksn                  10-byte Key Serial Number
+     * @param encryptedPinBlockHex 16-hex character DE 52 PIN block
+     * @param pan                  Primary Account Number
+     * @param format               ISO 9564 PIN block format
+     * @return clear numeric PIN
+     */
+    public static String decryptDukptPin(
+            byte[] bdk,
+            byte[] ksn,
+            String encryptedPinBlockHex,
+            String pan,
+            PinBlockFormat format
+    ) {
+        byte[] ipek = deriveIpek(bdk, ksn);
+        byte[] txnKey = deriveTransactionKey(ipek, ksn);
+        byte[] pinKey = derivePinKey(txnKey);
+
+        return IsoPinBlockEngine.decryptPin(encryptedPinBlockHex, pan, format, pinKey);
     }
 
-    private static byte[] combineHalves(byte[] left, byte[] right) {
-        byte[] combined = new byte[HALF_KEY_LENGTH * 2];
-        System.arraycopy(left, 0, combined, 0, HALF_KEY_LENGTH);
-        System.arraycopy(right, 0, combined, HALF_KEY_LENGTH, HALF_KEY_LENGTH);
-        return combined;
+    private static void validateBdk(byte[] bdk) {
+        if (bdk == null || (bdk.length != 16 && bdk.length != 24)) {
+            throw new IllegalArgumentException("BDK must be 16 or 24 bytes (double/triple length 3DES)");
+        }
+    }
+
+    private static void validateIpek(byte[] ipek) {
+        if (ipek == null || (ipek.length != 16 && ipek.length != 24)) {
+            throw new IllegalArgumentException("IPEK must be 16 or 24 bytes");
+        }
+    }
+
+    private static void validateKsn(byte[] ksn) {
+        if (ksn == null || ksn.length != 10) {
+            throw new IllegalArgumentException("KSN must be exactly 10 bytes (20 hex characters)");
+        }
     }
 }

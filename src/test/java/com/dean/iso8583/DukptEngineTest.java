@@ -2,61 +2,141 @@ package com.dean.iso8583;
 
 import com.dean.iso8583.core.crypto.CryptoUtils;
 import com.dean.iso8583.core.crypto.DukptEngine;
+import com.dean.iso8583.core.crypto.IsoPinBlockEngine;
+import com.dean.iso8583.core.crypto.PinBlockFormat;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@DisplayName("DukptEngine Test Suite")
+@DisplayName("DUKPT (ANSI X9.24) Key Management Engine Tests")
 class DukptEngineTest {
 
-    // Standard ANSI X9.24 Test Vector
-    private static final byte[] BDK = CryptoUtils.hexToBytes("0123456789ABCDEFFEDCBA9876543210");
-    private static final byte[] KSN_1 = CryptoUtils.hexToBytes("FFFF9876543210E00001");
-    private static final byte[] KSN_2 = CryptoUtils.hexToBytes("FFFF9876543210E00002");
+    // Standard ANSI X9.24 Test Vector Key Material
+    private static final String BDK_HEX = "0123456789ABCDEFFEDCBA9876543210";
+    private static final String KSN_BASE_HEX = "FFFF9876543210E00000";
+    private static final String KSN_TXN1_HEX = "FFFF9876543210E00001";
+    private static final String KSN_TXN2_HEX = "FFFF9876543210E00002";
 
-    @Test
-    @DisplayName("Derives reproducible IPEK from BDK and KSN")
-    void shouldDeriveIPEK() {
-        byte[] ipek = DukptEngine.deriveIPEK(BDK, KSN_1);
+    @Nested
+    @DisplayName("IPEK Derivation Tests")
+    class IpekTests {
 
-        assertThat(ipek).hasSize(16);
-        assertThat(CryptoUtils.bytesToHex(ipek)).isNotEmpty();
+        @Test
+        @DisplayName("Should derive deterministic 16-byte IPEK from BDK and KSN")
+        void shouldDeriveIpek() {
+            byte[] bdk = CryptoUtils.hexToBytes(BDK_HEX);
+            byte[] ksn = CryptoUtils.hexToBytes(KSN_BASE_HEX);
+
+            byte[] ipek = DukptEngine.deriveIpek(bdk, ksn);
+            assertThat(ipek).hasSize(16);
+
+            String ipekHex = CryptoUtils.bytesToHex(ipek);
+            assertThat(ipekHex).isNotBlank();
+
+            // Derivation from same BDK and masked KSN must be strictly repeatable
+            byte[] ipek2 = DukptEngine.deriveIpek(bdk, CryptoUtils.hexToBytes(KSN_TXN1_HEX));
+            assertThat(CryptoUtils.bytesToHex(ipek2)).isEqualTo(ipekHex);
+        }
+
+        @Test
+        @DisplayName("Should validate BDK and KSN length requirements")
+        void shouldValidateInputLengths() {
+            byte[] validBdk = CryptoUtils.hexToBytes(BDK_HEX);
+            byte[] invalidKsn = CryptoUtils.hexToBytes("FFFF9876543210"); // too short
+
+            assertThatThrownBy(() -> DukptEngine.deriveIpek(validBdk, invalidKsn))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("KSN must be exactly 10 bytes");
+
+            assertThatThrownBy(() -> DukptEngine.deriveIpek(new byte[8], CryptoUtils.hexToBytes(KSN_BASE_HEX)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("BDK must be 16 or 24 bytes");
+        }
     }
 
-    @Test
-    @DisplayName("Extracts 21-bit transaction counter correctly from KSN")
-    void shouldExtractTransactionCounter() {
-        long count1 = DukptEngine.extractTransactionCounter(KSN_1);
-        assertThat(count1).isEqualTo(1);
+    @Nested
+    @DisplayName("Transaction Key & Variant Derivation Tests")
+    class TransactionKeyTests {
 
-        long count2 = DukptEngine.extractTransactionCounter(KSN_2);
-        assertThat(count2).isEqualTo(2);
+        @Test
+        @DisplayName("Should derive distinct transaction keys for sequential counter increments")
+        void shouldDeriveDistinctTransactionKeys() {
+            byte[] bdk = CryptoUtils.hexToBytes(BDK_HEX);
+            byte[] ksn1 = CryptoUtils.hexToBytes(KSN_TXN1_HEX);
+            byte[] ksn2 = CryptoUtils.hexToBytes(KSN_TXN2_HEX);
 
-        byte[] ksn100 = CryptoUtils.hexToBytes("FFFF9876543210E00064"); // 0x64 = 100
-        assertThat(DukptEngine.extractTransactionCounter(ksn100)).isEqualTo(100);
+            byte[] ipek = DukptEngine.deriveIpek(bdk, ksn1);
+
+            byte[] txnKey1 = DukptEngine.deriveTransactionKey(ipek, ksn1);
+            byte[] txnKey2 = DukptEngine.deriveTransactionKey(ipek, ksn2);
+
+            assertThat(txnKey1).hasSize(16);
+            assertThat(txnKey2).hasSize(16);
+            assertThat(txnKey1).isNotEqualTo(txnKey2);
+        }
+
+        @Test
+        @DisplayName("Should compute standard ANSI X9.24 Key Variants (PEK, MAK, DEK)")
+        void shouldDeriveKeyVariants() {
+            byte[] bdk = CryptoUtils.hexToBytes(BDK_HEX);
+            byte[] ksn = CryptoUtils.hexToBytes(KSN_TXN1_HEX);
+            byte[] ipek = DukptEngine.deriveIpek(bdk, ksn);
+            byte[] txnKey = DukptEngine.deriveTransactionKey(ipek, ksn);
+
+            byte[] pinKey = DukptEngine.derivePinKey(txnKey);
+            byte[] macKey = DukptEngine.deriveMacKey(txnKey);
+            byte[] dataKey = DukptEngine.deriveDataKey(txnKey);
+
+            assertThat(pinKey).hasSize(16).isNotEqualTo(txnKey);
+            assertThat(macKey).hasSize(16).isNotEqualTo(txnKey).isNotEqualTo(pinKey);
+            assertThat(dataKey).hasSize(16).isNotEqualTo(txnKey).isNotEqualTo(macKey);
+        }
+
+        @Test
+        @DisplayName("Should extract KSN components accurately")
+        void shouldExtractKsnComponents() {
+            byte[] ksn = CryptoUtils.hexToBytes("FFFF9876543210E0002A"); // 2A = 42 decimal counter
+
+            assertThat(DukptEngine.extractKeySetId(ksn)).isEqualTo("FFFF98");
+            assertThat(DukptEngine.extractDeviceId(ksn)).isEqualTo("76543210");
+            assertThat(DukptEngine.extractTransactionCounter(ksn)).isEqualTo(42L);
+        }
     }
 
-    @Test
-    @DisplayName("Derives distinct session keys for consecutive transaction counters (Forward Secrecy)")
-    void shouldDeriveUniqueSessionKeysPerTransaction() {
-        byte[] pinKey1 = DukptEngine.derivePinKey(BDK, KSN_1);
-        byte[] pinKey2 = DukptEngine.derivePinKey(BDK, KSN_2);
+    @Nested
+    @DisplayName("DUKPT PIN Block Encryption & Decryption Tests")
+    class DukptPinTests {
 
-        assertThat(pinKey1).isNotEqualTo(pinKey2);
-        assertThat(pinKey1).hasSize(16);
-        assertThat(pinKey2).hasSize(16);
-    }
+        @Test
+        @DisplayName("Should encrypt PIN with terminal PEK and successfully decrypt via DUKPT BDK")
+        void shouldEncryptAndDecryptDukptPin() {
+            byte[] bdk = CryptoUtils.hexToBytes(BDK_HEX);
+            byte[] ksn = CryptoUtils.hexToBytes(KSN_TXN1_HEX);
+            String pan = "4532015588991234";
+            String clearPin = "4892";
 
-    @Test
-    @DisplayName("Derives separate PIN, MAC, and Data variant keys for the same transaction")
-    void shouldDeriveDistinctVariantKeys() {
-        byte[] pinKey = DukptEngine.derivePinKey(BDK, KSN_1);
-        byte[] macKey = DukptEngine.deriveMacKey(BDK, KSN_1);
-        byte[] dataKey = DukptEngine.deriveDataKey(BDK, KSN_1);
+            // 1. Terminal derives its current PEK
+            byte[] ipek = DukptEngine.deriveIpek(bdk, ksn);
+            byte[] txnKey = DukptEngine.deriveTransactionKey(ipek, ksn);
+            byte[] terminalPek = DukptEngine.derivePinKey(txnKey);
 
-        assertThat(pinKey).isNotEqualTo(macKey);
-        assertThat(pinKey).isNotEqualTo(dataKey);
-        assertThat(macKey).isNotEqualTo(dataKey);
+            // 2. Terminal encrypts Format 0 PIN block
+            String encryptedBlock = IsoPinBlockEngine.encryptPin(clearPin, pan, PinBlockFormat.FORMAT_0, terminalPek);
+            assertThat(encryptedBlock).hasSize(16);
+
+            // 3. Payment Switch receives encryptedBlock + KSN and decrypts via BDK
+            String decryptedPin = DukptEngine.decryptDukptPin(
+                    bdk,
+                    ksn,
+                    encryptedBlock,
+                    pan,
+                    PinBlockFormat.FORMAT_0
+            );
+
+            assertThat(decryptedPin).isEqualTo(clearPin);
+        }
     }
 }

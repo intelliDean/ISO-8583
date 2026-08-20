@@ -1251,6 +1251,58 @@
             <button class="btn btn-violet" onclick="translatePin()">↔️ Translate PIN Block</button>
             <div id="pinTransResult" class="crypto-result" style="display:none; margin-top:0.75rem;"></div>
         </div>
+
+        <!-- DUKPT (ANSI X9.24) Key Management & Decryption -->
+        <div class="card card-cyan" style="margin-top:1.5rem;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.75rem;">
+                <div>
+                    <h3>🔑 DUKPT (ANSI X9.24) Key Management &amp; Terminal PIN Decryption</h3>
+                    <p class="card-desc">Derived Unique Key Per Transaction — calculates IPEK, forward-secure Transaction Working Keys, and ANSI X9.24 variant masks (PEK, MAK, DEK).</p>
+                </div>
+                <span class="badge" style="background:rgba(6,182,212,0.15); color:#22d3ee; border:1px solid rgba(6,182,212,0.3); font-size:0.75rem; padding:0.25rem 0.6rem; border-radius:999px;">ANSI X9.24-1:2017</span>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="dukptBdk">Base Derivation Key (BDK) hex:</label>
+                    <input type="text" id="dukptBdk" value="0123456789ABCDEFFEDCBA9876543210" style="font-family:'Fira Code',monospace;">
+                </div>
+                <div class="form-group">
+                    <label for="dukptKsn">Key Serial Number (KSN - 20 hex chars):</label>
+                    <input type="text" id="dukptKsn" value="FFFF9876543210E00001" style="font-family:'Fira Code',monospace;">
+                </div>
+            </div>
+
+            <div style="display:flex; gap:0.75rem; margin-bottom:1rem;">
+                <button class="btn btn-primary" onclick="deriveDukptKeys()">⚡ Derive DUKPT Keys</button>
+            </div>
+
+            <div id="dukptDeriveResult" class="crypto-result" style="display:none; margin-bottom:1.5rem;"></div>
+
+            <div style="border-top:1px solid rgba(255,255,255,0.08); padding-top:1rem;">
+                <h4 style="font-size:0.95rem; margin-bottom:0.75rem; color:#e2e8f0;">Terminal DUKPT PIN Block Decryption</h4>
+                <div class="form-row-3">
+                    <div class="form-group">
+                        <label for="dukptEncPin">Encrypted PIN Block (DE 52):</label>
+                        <input type="text" id="dukptEncPin" placeholder="e.g. 8B304F2DDD3476AD" style="font-family:'Fira Code',monospace;">
+                    </div>
+                    <div class="form-group">
+                        <label for="dukptPan">Card PAN:</label>
+                        <input type="text" id="dukptPan" value="4532015588991234">
+                    </div>
+                    <div class="form-group">
+                        <label for="dukptPinFormat">Format:</label>
+                        <select id="dukptPinFormat">
+                            <option value="FORMAT_0">Format 0 — ISO-0</option>
+                            <option value="FORMAT_1">Format 1 — ISO-1</option>
+                            <option value="FORMAT_3">Format 3 — ISO-3</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn btn-secondary" onclick="decryptDukptPin()">🔓 Decrypt DUKPT PIN</button>
+                <div id="dukptDecryptResult" class="crypto-result" style="display:none; margin-top:0.75rem;"></div>
+            </div>
+        </div>
     </section>
 
     <!-- ═══════════════════════════════════════════════ -->
@@ -2128,6 +2180,94 @@ async function translatePin() {
             <div class="result-label" style="margin-top:0.5rem">Translation</div>
             <div style="color:var(--text-muted); font-size:0.75rem">${srcDisplay} → ${dstDisplay} &nbsp;|&nbsp; Status: <span class="${data.success ? 'result-ok' : 'result-fail'}">${data.success ? '✅ Success' : '❌ Failed'}</span></div>`;
     } catch (e) { el.innerHTML = `<span class="result-fail">Error: ${e.message}</span>`; }
+}
+
+async function deriveDukptKeys() {
+    const bdk = document.getElementById('dukptBdk').value.trim();
+    const ksn = document.getElementById('dukptKsn').value.trim();
+    const el = document.getElementById('dukptDeriveResult');
+    el.style.display = 'block';
+    el.innerHTML = '<div class="spinner"></div> Deriving DUKPT tree keys...';
+    try {
+        const res = await fetch(API + '/api/iso/crypto/dukpt/derive-key', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bdkHex: bdk, ksnHex: ksn })
+        });
+        const data = await res.json();
+        el.innerHTML = `
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:0.75rem; margin-bottom:0.75rem;">
+                <div style="background:rgba(0,0,0,0.3); padding:0.5rem 0.75rem; border-radius:6px; border:1px solid rgba(255,255,255,0.05);">
+                    <div class="result-label">Key Set ID (KSI)</div>
+                    <div class="result-val" style="font-size:0.95rem; color:#38bdf8;">${escHtml(data.keySetId || '—')}</div>
+                </div>
+                <div style="background:rgba(0,0,0,0.3); padding:0.5rem 0.75rem; border-radius:6px; border:1px solid rgba(255,255,255,0.05);">
+                    <div class="result-label">Device ID</div>
+                    <div class="result-val" style="font-size:0.95rem; color:#38bdf8;">${escHtml(data.deviceId || '—')}</div>
+                </div>
+                <div style="background:rgba(0,0,0,0.3); padding:0.5rem 0.75rem; border-radius:6px; border:1px solid rgba(255,255,255,0.05);">
+                    <div class="result-label">Transaction Counter (TC)</div>
+                    <div class="result-val" style="font-size:0.95rem; color:#4ade80;">#${data.transactionCounter} (Decimal)</div>
+                </div>
+            </div>
+            <div class="result-label">Initial Key (IPEK)</div>
+            <div class="result-val">${escHtml(data.ipekHex || '—')}</div>
+            <div class="result-label" style="margin-top:0.5rem">Current Transaction Working Key</div>
+            <div class="result-val" style="color:#a78bfa;">${escHtml(data.transactionKeyHex || '—')}</div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:0.75rem; margin-top:0.75rem;">
+                <div>
+                    <div class="result-label">PEK (PIN Encryption Variant)</div>
+                    <div class="result-val" style="font-size:0.85rem; color:#f43f5e;">${escHtml(data.pinKeyHex || '—')}</div>
+                </div>
+                <div>
+                    <div class="result-label">MAK (MAC Variant)</div>
+                    <div class="result-val" style="font-size:0.85rem; color:#eab308;">${escHtml(data.macKeyHex || '—')}</div>
+                </div>
+                <div>
+                    <div class="result-label">DEK (Data Encryption Variant)</div>
+                    <div class="result-val" style="font-size:0.85rem; color:#06b6d4;">${escHtml(data.dataKeyHex || '—')}</div>
+                </div>
+            </div>`;
+    } catch (e) {
+        el.innerHTML = `<span class="result-fail">Error: ${e.message}</span>`;
+    }
+}
+
+async function decryptDukptPin() {
+    const bdk = document.getElementById('dukptBdk').value.trim();
+    const ksn = document.getElementById('dukptKsn').value.trim();
+    const encPin = document.getElementById('dukptEncPin').value.trim();
+    const pan = document.getElementById('dukptPan').value.trim();
+    const format = document.getElementById('dukptPinFormat').value;
+
+    const el = document.getElementById('dukptDecryptResult');
+    el.style.display = 'block';
+    el.innerHTML = '<div class="spinner"></div> Decrypting DUKPT PIN...';
+    try {
+        const res = await fetch(API + '/api/iso/crypto/dukpt/decrypt-pin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                bdkHex: bdk,
+                ksnHex: ksn,
+                encryptedPinBlockHex: encPin,
+                pan: pan,
+                format: format
+            })
+        });
+        const data = await res.json();
+        el.innerHTML = `
+            <div style="background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:6px; padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="result-label" style="color:#4ade80;">Decrypted Clear PIN</div>
+                <div class="result-val" style="font-size:1.4rem; color:#4ade80; letter-spacing:0.2em;">🔑 ${escHtml(data.clearPin || '—')}</div>
+            </div>
+            <div class="result-label">Clear PIN Block</div>
+            <div class="result-val">${escHtml(data.clearPinBlockHex || '—')}</div>
+            <div class="result-label" style="margin-top:0.4rem">Terminal PEK Used</div>
+            <div class="result-val" style="font-size:0.8rem; color:#a78bfa;">${escHtml(data.pinKeyHex || '—')}</div>`;
+    } catch (e) {
+        el.innerHTML = `<span class="result-fail">Error: ${e.message}</span>`;
+    }
 }
 
 // ─── Clearing & Settlement ────────────────────────

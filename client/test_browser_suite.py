@@ -211,6 +211,31 @@ def tab5_crypto_lab(client: ApiClient, raw_payload: str) -> None:
     print(f"  ✓ Retail MAC Verification: Valid={mac_ver.get('valid')} ({mac_ver.get('message')})")
     assert _field(mac_ver, "valid", "Tab5"), "MAC should verify successfully"
 
+    # DUKPT (ANSI X9.24) Key Derivation & PIN Decryption
+    dukpt_res = client.post("/api/iso/crypto/dukpt/derive-key", {
+        "bdkHex": "0123456789ABCDEFFEDCBA9876543210",
+        "ksnHex": "FFFF9876543210E00001"
+    })
+    pek_hex = _field(dukpt_res, "pinKeyHex", "Tab5")
+    print(f"  ✓ DUKPT Tree Derivation: KSI={dukpt_res.get('keySetId')} Dev={dukpt_res.get('deviceId')} "
+          f"TC=#{dukpt_res.get('transactionCounter')} => PEK={pek_hex}")
+    assert _field(dukpt_res, "ipekHex", "Tab5"), "Should derive IPEK"
+    assert _field(dukpt_res, "transactionKeyHex", "Tab5"), "Should derive Transaction Key"
+
+    # Terminal encrypts with derived PEK, switch decrypts with BDK + KSN
+    pin_enc = client.post("/api/iso/crypto/pin/encode", {
+        "pin": "5678", "pan": "4532015588991234", "format": "FORMAT_0", "keyHex": pek_hex
+    })
+    dukpt_dec = client.post("/api/iso/crypto/dukpt/decrypt-pin", {
+        "bdkHex": "0123456789ABCDEFFEDCBA9876543210",
+        "ksnHex": "FFFF9876543210E00001",
+        "encryptedPinBlockHex": pin_enc.get("encryptedBlockHex"),
+        "pan": "4532015588991234",
+        "format": "FORMAT_0"
+    })
+    print(f"  ✓ DUKPT PIN Decryption: Clear PIN={dukpt_dec.get('clearPin')} (Success: {dukpt_dec.get('success')})")
+    assert dukpt_dec.get("clearPin") == "5678", "DUKPT Decryption should yield original PIN 5678"
+
 
 def tab6_clearing_settlement(client: ApiClient) -> None:
     print("\n[TAB 6: CLEARING & SETTLEMENT] Generating End-of-Day 1240 Presentment Batch...")

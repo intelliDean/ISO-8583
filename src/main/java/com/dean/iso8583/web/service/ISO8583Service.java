@@ -102,4 +102,19 @@ public interface ISO8583Service {
      * Retrieves distributed persistence, distributed locking, and Kafka Outbox telemetry.
      */
     ResiliencyStatusResponse getResiliencyStatus();
+
+    /**
+     * Derives Initial PIN Encryption Key (IPEK) from BDK and KSN.
+     */
+    com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveIpekResponse deriveDukptIpek(com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveIpekRequest request);
+
+    /**
+     * Derives Transaction Key and variants (PEK, MAK, DEK) from BDK/IPEK and KSN.
+     */
+    com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveKeyResponse deriveDukptKey(com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveKeyRequest request);
+
+    /**
+     * Decrypts a DUKPT-encrypted PIN block using BDK and KSN.
+     */
+    com.dean.iso8583.core.crypto.dto.DukptDtos.DecryptDukptPinResponse decryptDukptPin(com.dean.iso8583.core.crypto.dto.DukptDtos.DecryptDukptPinRequest request);
 }

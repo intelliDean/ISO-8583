@@ -241,6 +241,78 @@ public class ISO8583ServiceImpl implements ISO8583Service {
         );
     }
 
+    @Override
+    public com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveIpekResponse deriveDukptIpek(com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveIpekRequest request) {
+        byte[] bdk = resolveKey(request.bdkHex(), null, "DEFAULT_BDK");
+        byte[] ksn = CryptoUtils.hexToBytes(request.ksnHex());
+        byte[] ipek = com.dean.iso8583.core.crypto.DukptEngine.deriveIpek(bdk, ksn);
+        byte[] maskedKsn = com.dean.iso8583.core.crypto.DukptEngine.maskKsn(ksn);
+
+        return new com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveIpekResponse(
+                CryptoUtils.bytesToHex(bdk),
+                request.ksnHex().toUpperCase(),
+                CryptoUtils.bytesToHex(maskedKsn),
+                CryptoUtils.bytesToHex(ipek),
+                com.dean.iso8583.core.crypto.DukptEngine.extractKeySetId(ksn),
+                com.dean.iso8583.core.crypto.DukptEngine.extractDeviceId(ksn),
+                com.dean.iso8583.core.crypto.DukptEngine.extractTransactionCounter(ksn)
+        );
+    }
+
+    @Override
+    public com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveKeyResponse deriveDukptKey(com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveKeyRequest request) {
+        byte[] bdk = resolveKey(request.bdkHex(), null, "DEFAULT_BDK");
+        byte[] ksn = CryptoUtils.hexToBytes(request.ksnHex());
+        byte[] ipek = com.dean.iso8583.core.crypto.DukptEngine.deriveIpek(bdk, ksn);
+        byte[] txnKey = com.dean.iso8583.core.crypto.DukptEngine.deriveTransactionKey(ipek, ksn);
+        byte[] pinKey = com.dean.iso8583.core.crypto.DukptEngine.derivePinKey(txnKey);
+        byte[] macKey = com.dean.iso8583.core.crypto.DukptEngine.deriveMacKey(txnKey);
+        byte[] dataKey = com.dean.iso8583.core.crypto.DukptEngine.deriveDataKey(txnKey);
+
+        return new com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveKeyResponse(
+                CryptoUtils.bytesToHex(bdk),
+                request.ksnHex().toUpperCase(),
+                CryptoUtils.bytesToHex(ipek),
+                CryptoUtils.bytesToHex(txnKey),
+                CryptoUtils.bytesToHex(pinKey),
+                CryptoUtils.bytesToHex(macKey),
+                CryptoUtils.bytesToHex(dataKey),
+                com.dean.iso8583.core.crypto.DukptEngine.extractKeySetId(ksn),
+                com.dean.iso8583.core.crypto.DukptEngine.extractDeviceId(ksn),
+                com.dean.iso8583.core.crypto.DukptEngine.extractTransactionCounter(ksn)
+        );
+    }
+
+    @Override
+    public com.dean.iso8583.core.crypto.dto.DukptDtos.DecryptDukptPinResponse decryptDukptPin(com.dean.iso8583.core.crypto.dto.DukptDtos.DecryptDukptPinRequest request) {
+        byte[] bdk = resolveKey(request.bdkHex(), null, "DEFAULT_BDK");
+        byte[] ksn = CryptoUtils.hexToBytes(request.ksnHex());
+        com.dean.iso8583.core.crypto.PinBlockFormat format = (request.format() != null && !request.format().isBlank())
+                ? com.dean.iso8583.core.crypto.PinBlockFormat.valueOf(request.format().toUpperCase())
+                : com.dean.iso8583.core.crypto.PinBlockFormat.FORMAT_0;
+
+        byte[] ipek = com.dean.iso8583.core.crypto.DukptEngine.deriveIpek(bdk, ksn);
+        byte[] txnKey = com.dean.iso8583.core.crypto.DukptEngine.deriveTransactionKey(ipek, ksn);
+        byte[] pinKey = com.dean.iso8583.core.crypto.DukptEngine.derivePinKey(txnKey);
+
+        byte[] cipherBytes = CryptoUtils.hexToBytes(request.encryptedPinBlockHex());
+        byte[] clearBytes = CryptoUtils.desDecryptEcb(cipherBytes, pinKey);
+        String clearHex = CryptoUtils.bytesToHex(clearBytes);
+        String clearPin = com.dean.iso8583.core.crypto.IsoPinBlockEngine.decodeClearPinBlock(clearHex, request.pan(), format);
+
+        return new com.dean.iso8583.core.crypto.dto.DukptDtos.DecryptDukptPinResponse(
+                clearPin,
+                clearHex,
+                request.encryptedPinBlockHex().toUpperCase(),
+                CryptoUtils.bytesToHex(pinKey),
+                request.ksnHex().toUpperCase(),
+                com.dean.iso8583.core.crypto.DukptEngine.extractTransactionCounter(ksn),
+                format.name(),
+                true,
+                "DUKPT PIN block successfully decrypted via PEK variant"
+        );
+    }
+
     private byte[] resolveKey(String keyHex, String keyId, String defaultKeyId) {
         if (keyHex != null && !keyHex.isBlank()) {
             return CryptoUtils.hexToBytes(keyHex);
