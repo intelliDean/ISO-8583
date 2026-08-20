@@ -20,7 +20,7 @@ import java.security.SecureRandom;
 @RequiredArgsConstructor
 public class IsoTlsContextFactory {
 
-    private final IsoTlsProperties tlsProperties;
+    private final IsoTlsProperties isoTlsProperties;
     private final ResourceLoader resourceLoader;
 
     /**
@@ -28,22 +28,23 @@ public class IsoTlsContextFactory {
      */
     public SSLContext createSslContext() {
         try {
-            KeyStore keyStore = loadKeyStore(tlsProperties.getKeystorePath(), tlsProperties.getKeystorePassword());
-            KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-            kmf.init(keyStore, tlsProperties.getKeystorePassword().toCharArray());
+            KeyStore keyStore = loadKeyStore(isoTlsProperties.getKeystorePath(), isoTlsProperties.getKeystorePassword());
+            KeyManagerFactory keyMgrFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+            keyMgrFactory.init(keyStore, isoTlsProperties.getKeystorePassword().toCharArray());
 
             TrustManager[] trustManagers = null;
-            if (tlsProperties.getClientAuth() != IsoTlsProperties.ClientAuthMode.NONE
-                    && tlsProperties.getTruststorePath() != null
-                    && !tlsProperties.getTruststorePath().isBlank()) {
-                KeyStore trustStore = loadKeyStore(tlsProperties.getTruststorePath(), tlsProperties.getTruststorePassword());
+            if (isoTlsProperties.getClientAuth() != IsoTlsProperties.ClientAuthMode.NONE
+                    && isoTlsProperties.getTruststorePath() != null
+                    && !isoTlsProperties.getTruststorePath().isBlank()) {
+                KeyStore trustStore = loadKeyStore(isoTlsProperties.getTruststorePath(), isoTlsProperties.getTruststorePassword());
                 TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
                 tmf.init(trustStore);
+
                 trustManagers = tmf.getTrustManagers();
             }
 
             SSLContext sslContext = SSLContext.getInstance("TLS");
-            sslContext.init(kmf.getKeyManagers(), trustManagers, new SecureRandom());
+            sslContext.init(keyMgrFactory.getKeyManagers(), trustManagers, new SecureRandom());
             return sslContext;
 
         } catch (Exception e) {
@@ -57,7 +58,7 @@ public class IsoTlsContextFactory {
     public void configureServerSocket(SSLServerSocket sslServerSocket) {
         sslServerSocket.setEnabledProtocols(new String[]{"TLSv1.3", "TLSv1.2"});
 
-        switch (tlsProperties.getClientAuth()) {
+        switch (isoTlsProperties.getClientAuth()) {
             case NEED -> {
                 sslServerSocket.setNeedClientAuth(true);
                 log.info("ISO 8583 TCP Server: Strict Mutual TLS (mTLS) enforced — Client certificates required.");

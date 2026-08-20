@@ -41,11 +41,26 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class IsoEchoManager {
 
     private final IsoEchoProperties properties;
     private final IsoTcpClient tcpClient;
+    private final com.dean.iso8583.core.metrics.IsoMetrics isoMetrics;
+
+    public IsoEchoManager(IsoEchoProperties properties, IsoTcpClient tcpClient) {
+        this(properties, tcpClient, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public IsoEchoManager(
+            IsoEchoProperties properties,
+            IsoTcpClient tcpClient,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.dean.iso8583.core.metrics.IsoMetrics isoMetrics
+    ) {
+        this.properties = properties;
+        this.tcpClient = tcpClient;
+        this.isoMetrics = isoMetrics;
+    }
 
 
     private final AtomicInteger stanGenerator = new AtomicInteger(1);
@@ -155,6 +170,10 @@ public class IsoEchoManager {
 
         log.info("ISO 8583 0800 Echo acknowledged (0810/00) — STAN={} Latency={}ms", stan, simulation.roundtripMs());
 
+        if (isoMetrics != null) {
+            isoMetrics.recordEcho(true, simulation.roundtripMs());
+        }
+
         return EchoResult.success(
                 EchoResult.SuccessRequest.builder()
                         .roundtripMs(simulation.roundtripMs())
@@ -194,6 +213,10 @@ public class IsoEchoManager {
         }
 
         log.warn("ISO 8583 0800 Echo failed — STAN={} Failures={} Error={}", stan, failures, errorMsg);
+
+        if (isoMetrics != null) {
+            isoMetrics.recordEcho(false, simulation.roundtripMs());
+        }
 
         return EchoResult.failure(EchoResult.FailureRequest.builder()
                 .roundtripMs(simulation.roundtripMs())

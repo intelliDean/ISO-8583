@@ -66,6 +66,18 @@ class ApiClient:
         except json.JSONDecodeError as exc:
             raise ApiError(f"{req.method} {endpoint} -> invalid JSON response: {raw[:200]!r}") from exc
 
+    def get_raw(self, endpoint: str) -> str:
+        url = urllib.parse.urljoin(self.base_url, endpoint)
+        req = urllib.request.Request(url, method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                return resp.read().decode("utf-8")
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:500]
+            raise ApiError(f"GET {endpoint} -> HTTP {exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise ApiError(f"GET {endpoint} -> connection failed: {exc.reason}") from exc
+
 
 def _field(res: Dict[str, Any], key: str, tab: str) -> Any:
     """Access a response field with a clear error if it's missing."""
@@ -282,6 +294,10 @@ def tab7_network_telemetry(client: ApiClient) -> None:
     print(f"  ✓ Outbox Status: {status.get('outboxStatus')}")
     print(f"  ✓ Total Dispatched Events: {status.get('totalEventsDispatched')}")
     print(f"  ✓ Pending Outbox Events: {status.get('pendingOutboxEvents')}")
+
+    prom_raw = client.get_raw("/actuator/prometheus")
+    assert "iso_" in prom_raw, "Prometheus scrape endpoint should expose ISO metrics"
+    print("  ✓ Prometheus Scrape Endpoint: Active at /actuator/prometheus (iso_* metrics registered)")
 
 
 # --------------------------------------------------------------------------

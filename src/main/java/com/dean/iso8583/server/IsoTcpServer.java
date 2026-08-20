@@ -4,11 +4,16 @@ import com.dean.iso8583.core.dto.IsoMessage;
 import com.dean.iso8583.core.IsoPacker;
 import com.dean.iso8583.core.IsoUnpacker;
 import com.dean.iso8583.core.utils.IsoMessageSanitizer;
+import com.dean.iso8583.server.tls.IsoTlsContextFactory;
+import com.dean.iso8583.server.tls.IsoTlsProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLServerSocket;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
@@ -26,8 +31,9 @@ import java.util.concurrent.TimeUnit;
 public class IsoTcpServer implements SmartLifecycle {
 
     private final IsoTcpProperties properties;
-    private final com.dean.iso8583.server.tls.IsoTlsProperties tlsProperties;
-    private final com.dean.iso8583.server.tls.IsoTlsContextFactory tlsContextFactory;
+    private final IsoTlsProperties tlsProperties;
+    private final IsoTlsContextFactory tlsContextFactory;
+    private final com.dean.iso8583.core.metrics.IsoMetrics metrics;
     private final ExecutorService clientExecutor;
     private final IsoMessageProcessor messageProcessor;
 
@@ -37,13 +43,15 @@ public class IsoTcpServer implements SmartLifecycle {
     public IsoTcpServer(
             IsoTcpProperties properties,
             IsoMessageProcessor messageProcessor,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) com.dean.iso8583.server.tls.IsoTlsProperties tlsProperties,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) com.dean.iso8583.server.tls.IsoTlsContextFactory tlsContextFactory
+            @Autowired(required = false) IsoTlsProperties tlsProperties,
+            @Autowired(required = false) IsoTlsContextFactory tlsContextFactory,
+            @Autowired(required = false) com.dean.iso8583.core.metrics.IsoMetrics metrics
     ) {
         this.properties = properties;
         this.messageProcessor = messageProcessor;
         this.tlsProperties = tlsProperties;
         this.tlsContextFactory = tlsContextFactory;
+        this.metrics = metrics;
         this.clientExecutor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
@@ -53,8 +61,10 @@ public class IsoTcpServer implements SmartLifecycle {
 
         try {
             if (tlsProperties != null && tlsProperties.isEnabled() && tlsContextFactory != null) {
-                javax.net.ssl.SSLContext sslContext = tlsContextFactory.createSslContext();
-                javax.net.ssl.SSLServerSocket sslServerSocket = (javax.net.ssl.SSLServerSocket) sslContext.getServerSocketFactory().createServerSocket(properties.port());
+                SSLContext sslContext = tlsContextFactory.createSslContext();
+                SSLServerSocket sslServerSocket = (SSLServerSocket) sslContext.getServerSocketFactory()
+                        .createServerSocket(properties.port());
+                
                 tlsContextFactory.configureServerSocket(sslServerSocket);
                 serverSocket = sslServerSocket;
                 log.info("ISO 8583 TCP Host Simulator started on port {} with TLS/mTLS encryption (clientAuth={})",
@@ -155,7 +165,7 @@ public class IsoTcpServer implements SmartLifecycle {
     }
 
     private void processMessage(byte[] payload, DataOutputStream output) throws IOException {
-
+        long startNanos = System.nanoTime();
         String rawMessage = decodePayload(payload);
         boolean hasHeader = hasTPDUHeader(rawMessage);
 
@@ -164,6 +174,17 @@ public class IsoTcpServer implements SmartLifecycle {
 
         IsoMessage request = IsoUnpacker.unpack(rawMessage, hasHeader);
         IsoMessage response = messageProcessor.process(request);
+
+        long durationNanos = System.nanoTime() - startNanos;
+        if (metrics != null && response != null) {
+            metrics.recordTransaction(
+                    response.getMti(),
+                    response.getField(39),
+                    "DEFAULT",
+                    durationNanos,
+                    true
+            );
+        }
 
         sendResponse(response, output);
     }
