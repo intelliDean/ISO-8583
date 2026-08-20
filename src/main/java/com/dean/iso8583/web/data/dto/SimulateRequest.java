@@ -1,4 +1,9 @@
 package com.dean.iso8583.web.data.dto;
 
-public record SimulateRequest(String rawPayload) {
+import com.fasterxml.jackson.annotation.JsonAlias;
+
+public record SimulateRequest(
+        @JsonAlias({"payload", "message", "requestPayload", "sentRaw"})
+        String rawPayload
+) {
 }

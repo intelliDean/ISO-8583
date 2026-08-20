@@ -1706,25 +1706,51 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 async function generatePackedMessage() {
-    const payload = buildPackRequest();
+    const req = buildPackRequest();
     try {
-        const res = await fetch(API + '/api/iso/pack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const res = await fetch(API + '/api/iso/pack', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(req)
+        });
         const data = await res.json();
-        document.getElementById('packedOutput').textContent = data.packed || '—';
-        document.getElementById('bitmapInfo').textContent = data.activeBits ? 'Active bits: ' + data.activeBits.join(', ') : '';
-    } catch (e) { showToast('Pack failed: ' + e.message, 'error'); }
+        const raw = data.rawPayload || data.packed || '—';
+        document.getElementById('packedOutput').textContent = raw;
+        const bitmapInfo = document.getElementById('bitmapInfo');
+        if (bitmapInfo) {
+            bitmapInfo.textContent = 'Primary Bitmap: ' + (data.primaryBitmapHex || '—') +
+                (data.secondaryBitmapHex ? ' | Secondary Bitmap: ' + data.secondaryBitmapHex : '') +
+                ' | Length: ' + (data.length || raw.length) + ' chars';
+        }
+        return raw;
+    } catch (e) {
+        showToast('Pack failed: ' + e.message, 'error');
+        return null;
+    }
 }
 
 async function packAndSimulate() {
-    const payload = buildPackRequest();
+    const packedRaw = await generatePackedMessage();
+    if (!packedRaw || packedRaw === '—') {
+        showToast('Failed to pack message before simulation', 'error');
+        return;
+    }
     try {
-        const res = await fetch(API + '/api/iso/simulate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const res = await fetch(API + '/api/iso/simulate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rawPayload: packedRaw })
+        });
         const data = await res.json();
         const box = document.getElementById('simResult');
-        box.classList.remove('empty');
-        box.innerHTML = renderSimResult(data);
-        document.getElementById('packedOutput').textContent = data.sentRaw || payload;
-    } catch (e) { showToast('Simulation failed: ' + e.message, 'error'); }
+        if (box) {
+            box.classList.remove('empty');
+            box.innerHTML = renderSimResult(data, packedRaw);
+        }
+        showToast('Simulation complete: ' + (data.responseCodeDescription || data.responseCode || 'OK'), data.success ? 'success' : 'warning');
+    } catch (e) {
+        showToast('Simulation failed: ' + e.message, 'error');
+    }
 }
 
 function buildPackRequest() {
@@ -1734,18 +1760,30 @@ function buildPackRequest() {
         const el = document.getElementById('f' + n);
         if (el && el.value.trim()) fields[n] = el.value.trim();
     });
-    return { header: document.getElementById('bHeader').value, mti, fields };
+    return {
+        header: document.getElementById('bHeader').value,
+        mti: mti,
+        fields: fields,
+        specId: 'iso8583-1987'
+    };
 }
 
-function renderSimResult(data) {
+function renderSimResult(data, sentRaw) {
+    if (!data) return '<div class="row"><span class="val text-muted">No response</span></div>';
     const rows = [
-        ['MTI', data.responseMti || data.mti || '—'],
-        ['Response Code (DE 39)', data.responseCode || '—'],
-        ['Auth Code (DE 38)', data.authCode || '—'],
-        ['Retrieval Ref (DE 37)', data.rrn || '—'],
-        ['Packed Sent', (data.sentRaw || '').substring(0, 80) + '...'],
+        ['MTI', data.responseMti || '0210'],
+        ['Response Code (DE 39)', (data.responseCode || '—') + (data.responseCodeDescription ? ' (' + data.responseCodeDescription + ')' : '')],
+        ['Round-Trip Latency', (data.roundtripMs !== undefined ? data.roundtripMs + ' ms' : '—')],
+        ['Status', data.success ? '✅ ' + (data.message || 'Approved / Successful') : '❌ ' + (data.message || 'Failed')],
+        ['Raw Response Received', data.responsePayload || '—'],
+        ['Raw Payload Sent', sentRaw || data.requestPayload || '—']
     ];
-    return rows.map(([k, v]) => `<div class="row"><span class="key">${k}</span><span class="val">${escHtml(String(v))}</span></div>`).join('');
+    return rows.map(([k, v]) => `
+        <div class="row" style="display:flex; justify-content:space-between; margin-bottom:0.4rem; padding:0.35rem 0; border-bottom:1px solid rgba(255,255,255,0.06); font-size:0.8rem;">
+            <span class="key" style="color:var(--text-muted); font-weight:600; min-width:140px;">${k}</span>
+            <span class="val" style="font-family:'Fira Code',monospace; color:var(--accent-cyan); word-break:break-all; max-width:65%; text-align:right;">${escHtml(String(v))}</span>
+        </div>
+    `).join('');
 }
 
 // ─── Bitmap Grid ──────────────────────────────────
