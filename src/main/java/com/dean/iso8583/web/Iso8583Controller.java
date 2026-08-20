@@ -2,16 +2,18 @@ package com.dean.iso8583.web;
 
 import com.dean.iso8583.core.clearing.dto.ClearingBatch;
 import com.dean.iso8583.core.clearing.dto.ClearingRecord;
-import com.dean.iso8583.core.dto.IsoFieldDef;
-import com.dean.iso8583.core.dto.IsoSpecDefinition;
+import com.dean.iso8583.core.crypto.dto.DukptDtos;
+import com.dean.iso8583.core.dto.IsoDTOs;
 import com.dean.iso8583.core.echo.dto.ChannelStatusReport;
 import com.dean.iso8583.core.echo.dto.EchoResult;
+import com.dean.iso8583.core.reversal.TransactionRecord;
 import com.dean.iso8583.web.data.dto.*;
 import com.dean.iso8583.web.service.ISO8583Service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Collection;
 import java.util.Map;
 
 /**
@@ -35,27 +37,27 @@ public class Iso8583Controller {
     private final ISO8583Service iso8583Service;
 
     @GetMapping("/spec")
-    public ResponseEntity<Map<Integer, IsoFieldDef>> getCatalog() {
+    public ResponseEntity<Map<Integer, IsoDTOs.IsoFieldDef>> getCatalog() {
         return ResponseEntity.ok(iso8583Service.getCatalog());
     }
 
     @GetMapping("/specs")
-    public ResponseEntity<Map<String, IsoSpecDefinition>> getSpecs() {
+    public ResponseEntity<Map<String, IsoDTOs.IsoSpecDefinition>> getSpecs() {
         return ResponseEntity.ok(iso8583Service.getSpecs());
     }
 
     @PostMapping("/unpack")
-    public ResponseEntity<UnpackResult> unpackMessage(@RequestBody UnpackRequest request) {
+    public ResponseEntity<WebDTOs.UnpackResult> unpackMessage(@RequestBody WebDTOs.UnpackRequest request) {
         return ResponseEntity.ok(iso8583Service.unpackMessage(request));
     }
 
     @PostMapping("/pack")
-    public ResponseEntity<PackResult> packMessage(@RequestBody PackRequest request) {
+    public ResponseEntity<WebDTOs.PackResult> packMessage(@RequestBody WebDTOs.PackRequest request) {
         return ResponseEntity.ok(iso8583Service.packMessage(request));
     }
 
     @PostMapping("/simulate")
-    public ResponseEntity<SimulateResult> simulateTransaction(@RequestBody SimulateRequest request) {
+    public ResponseEntity<WebDTOs.SimulateResult> simulateTransaction(@RequestBody WebDTOs.SimulateRequest request) {
         return ResponseEntity.ok(iso8583Service.simulateTransaction(request));
     }
 
@@ -81,7 +83,7 @@ public class Iso8583Controller {
      * @return fully decoded tag list with ARQC/ATC fraud signals
      */
     @PostMapping("/emv/parse")
-    public ResponseEntity<EmvParseResponse> parseEmv(@RequestBody EmvParseRequest request) {
+    public ResponseEntity<WebDTOs.EmvParseResponse> parseEmv(@RequestBody WebDTOs.EmvParseRequest request) {
         return ResponseEntity.ok(iso8583Service.parseEmv(request));
     }
 
@@ -97,7 +99,7 @@ public class Iso8583Controller {
      * @return collection of tracked transaction records
      */
     @GetMapping("/transactions")
-    public ResponseEntity<java.util.Collection<com.dean.iso8583.core.reversal.TransactionRecord>> getTransactions() {
+    public ResponseEntity<Collection<TransactionRecord>> getTransactions() {
         return ResponseEntity.ok(iso8583Service.getTransactions());
     }
 
@@ -132,7 +134,7 @@ public class Iso8583Controller {
      * <p>Encodes and encrypts a plaintext PIN into an ISO 9564 PIN block (DE 52).</p>
      */
     @PostMapping("/crypto/pin/encode")
-    public ResponseEntity<PinEncodeResponse> encodePin(@RequestBody PinEncodeRequest request) {
+    public ResponseEntity<WebDTOs.PinEncodeResponse> encodePin(@RequestBody WebDTOs.PinEncodeRequest request) {
         return ResponseEntity.ok(iso8583Service.encodePin(request));
     }
 
@@ -142,7 +144,7 @@ public class Iso8583Controller {
      * <p>Translates an encrypted PIN block across different key zones or block formats (e.g. ISO-0 to ISO-1).</p>
      */
     @PostMapping("/crypto/pin/translate")
-    public ResponseEntity<PinTranslateResponse> translatePin(@RequestBody PinTranslateRequest request) {
+    public ResponseEntity<WebDTOs.PinTranslateResponse> translatePin(@RequestBody WebDTOs.PinTranslateRequest request) {
         return ResponseEntity.ok(iso8583Service.translatePin(request));
     }
 
@@ -152,7 +154,7 @@ public class Iso8583Controller {
      * <p>Calculates an ISO 9797-1 Retail MAC for an ISO 8583 message.</p>
      */
     @PostMapping("/crypto/mac/generate")
-    public ResponseEntity<MacGenerateResponse> generateMac(@RequestBody MacGenerateRequest request) {
+    public ResponseEntity<WebDTOs.MacGenerateResponse> generateMac(@RequestBody WebDTOs.MacGenerateRequest request) {
         return ResponseEntity.ok(iso8583Service.generateMac(request));
     }
 
@@ -162,7 +164,7 @@ public class Iso8583Controller {
      * <p>Verifies the ISO 9797-1 Retail MAC of an ISO 8583 message.</p>
      */
     @PostMapping("/crypto/mac/verify")
-    public ResponseEntity<MacVerifyResponse> verifyMac(@RequestBody MacVerifyRequest request) {
+    public ResponseEntity<WebDTOs.MacVerifyResponse> verifyMac(@RequestBody WebDTOs.MacVerifyRequest request) {
         return ResponseEntity.ok(iso8583Service.verifyMac(request));
     }
 
@@ -172,8 +174,8 @@ public class Iso8583Controller {
      * <p>Derives the Initial PIN Encryption Key (IPEK) from BDK and KSN.</p>
      */
     @PostMapping("/crypto/dukpt/derive-ipek")
-    public ResponseEntity<com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveIpekResponse> deriveDukptIpek(
-            @RequestBody com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveIpekRequest request
+    public ResponseEntity<DukptDtos.DeriveIpekResponse> deriveDukptIpek(
+            @RequestBody DukptDtos.DeriveIpekRequest request
     ) {
         return ResponseEntity.ok(iso8583Service.deriveDukptIpek(request));
     }
@@ -184,8 +186,8 @@ public class Iso8583Controller {
      * <p>Derives the current Transaction Key and key variants (PEK, MAK, DEK) from BDK and KSN.</p>
      */
     @PostMapping("/crypto/dukpt/derive-key")
-    public ResponseEntity<com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveKeyResponse> deriveDukptKey(
-            @RequestBody com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveKeyRequest request
+    public ResponseEntity<DukptDtos.DeriveKeyResponse> deriveDukptKey(
+            @RequestBody DukptDtos.DeriveKeyRequest request
     ) {
         return ResponseEntity.ok(iso8583Service.deriveDukptKey(request));
     }
@@ -196,8 +198,8 @@ public class Iso8583Controller {
      * <p>Decrypts an ANSI X9.24 DUKPT-encrypted PIN block using BDK and KSN.</p>
      */
     @PostMapping("/crypto/dukpt/decrypt-pin")
-    public ResponseEntity<com.dean.iso8583.core.crypto.dto.DukptDtos.DecryptDukptPinResponse> decryptDukptPin(
-            @RequestBody com.dean.iso8583.core.crypto.dto.DukptDtos.DecryptDukptPinRequest request
+    public ResponseEntity<DukptDtos.DecryptDukptPinResponse> decryptDukptPin(
+            @RequestBody DukptDtos.DecryptDukptPinRequest request
     ) {
         return ResponseEntity.ok(iso8583Service.decryptDukptPin(request));
     }
@@ -210,7 +212,7 @@ public class Iso8583Controller {
      */
     @PostMapping("/clearing/batch/generate")
     public ResponseEntity<ClearingBatch> generateClearingBatch(
-            @RequestBody(required = false) ClearingBatchRequest request
+            @RequestBody(required = false) WebDTOs.ClearingBatchRequest request
     ) {
         return ResponseEntity.ok(iso8583Service.generateClearingBatch(request));
     }
@@ -222,7 +224,7 @@ public class Iso8583Controller {
      */
     @PostMapping("/clearing/chargeback")
     public ResponseEntity<ClearingRecord> fileChargeback(
-            @RequestBody ChargebackRequest request
+            @RequestBody WebDTOs.ChargebackRequest request
     ) {
         return ResponseEntity.ok(iso8583Service.fileChargeback(request));
     }
@@ -234,7 +236,7 @@ public class Iso8583Controller {
      */
     @PostMapping("/clearing/batch/parse")
     public ResponseEntity<ClearingBatch> parseClearingBatch(
-            @RequestBody ClearingParseRequest request
+            @RequestBody WebDTOs.ClearingParseRequest request
     ) {
         return ResponseEntity.ok(iso8583Service.parseClearingBatch(request));
     }
@@ -245,7 +247,7 @@ public class Iso8583Controller {
      * <p>Returns all generated and archived clearing batches.</p>
      */
     @GetMapping("/clearing/batches")
-    public ResponseEntity<java.util.Collection<ClearingBatch>> getClearingBatches() {
+    public ResponseEntity<Collection<ClearingBatch>> getClearingBatches() {
         return ResponseEntity.ok(iso8583Service.getClearingBatches());
     }
 
@@ -255,7 +257,7 @@ public class Iso8583Controller {
      * <p>Returns all filed chargeback dispute records.</p>
      */
     @GetMapping("/clearing/chargebacks")
-    public ResponseEntity<java.util.Collection<ClearingRecord>> getChargebacks() {
+    public ResponseEntity<Collection<ClearingRecord>> getChargebacks() {
         return ResponseEntity.ok(iso8583Service.getChargebacks());
     }
 
@@ -265,7 +267,7 @@ public class Iso8583Controller {
      * <p>Returns distributed persistence, distributed locking, and Kafka Outbox telemetry.</p>
      */
     @GetMapping("/resiliency/status")
-    public ResponseEntity<com.dean.iso8583.web.data.dto.ResiliencyStatusResponse> getResiliencyStatus() {
+    public ResponseEntity<WebDTOs.ResiliencyStatusResponse> getResiliencyStatus() {
         return ResponseEntity.ok(iso8583Service.getResiliencyStatus());
     }
 }

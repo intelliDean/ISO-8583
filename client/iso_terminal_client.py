@@ -6,7 +6,7 @@ ISO 8583 Terminal & POS Host Client Simulator
 =============================================================================
 Developer Note:
 This interactive client communicates with the ISO 8583 Payment Engine over
-raw TCP Sockets (port 8583) using the standard 2-byte Big-Endian length header.
+raw TCP or TLS/mTLS Sockets (port 8583) using the standard 2-byte Big-Endian length header.
 
 Features:
   1. Purchase Transaction (0200 -> 0210)
@@ -16,6 +16,7 @@ Features:
   5. Custom Raw ISO Message Transmission
   6. High-Throughput Latency Benchmark (10 consecutive echoes)
   7. Non-Interactive CLI Automation Mode (--action / --payload)
+  8. SSL / TLS 1.3 Encryption & Mutual TLS (mTLS) Support (--tls, --cert, --key)
 =============================================================================
 """
 
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import socket
+import ssl
 import sys
 import time
 from dataclasses import dataclass, field
@@ -94,6 +96,22 @@ FIELD_UNPACK_DEFS: Dict[int, Tuple[str, str | int]] = {
     55: ("ICC System Related Data (EMV)", "LLLVAR"),
     70: ("Network Management Information Code", 3),
 }
+
+
+# --------------------------------------------------------------------------
+# Connection Configuration Dataclass
+# --------------------------------------------------------------------------
+
+@dataclass
+class ConnectionConfig:
+    host: str = DEFAULT_HOST
+    port: int = DEFAULT_PORT
+    timeout: float = DEFAULT_TIMEOUT
+    use_tls: bool = False
+    insecure: bool = False
+    cert_file: Optional[str] = None
+    key_file: Optional[str] = None
+    ca_cert: Optional[str] = None
 
 
 # --------------------------------------------------------------------------
@@ -232,7 +250,6 @@ def parse_response(resp: str) -> ParsedResponse:
     offset += 4
     mti_desc = MTI_DESCRIPTIONS.get(mti, "ISO 8583 Response")
 
-    # Primary Bitmap
     p_bm = resp[offset:offset + 16]
     offset += 16
 
@@ -263,7 +280,6 @@ def parse_response(resp: str) -> ParsedResponse:
             except ValueError:
                 pass
 
-    # Extract Data Elements
     extracted_fields: Dict[int, str] = {}
     for fid in sorted(active_fields):
         if offset >= len(resp):
@@ -349,28 +365,42 @@ def now_iso_datetime() -> str:
 
 
 # --------------------------------------------------------------------------
-# Network I/O
+# Network I/O with SSL/TLS Support
 # --------------------------------------------------------------------------
 
-def send_iso_frame(host: str, port: int, payload: str, timeout: float = DEFAULT_TIMEOUT) -> tuple[str, float]:
-    """Transmits a length-prefixed ISO 8583 TCP frame and returns (response_str, elapsed_ms)."""
+def send_iso_frame(cfg: ConnectionConfig, payload: str) -> tuple[str, float]:
+    """Transmits a length-prefixed ISO 8583 TCP/TLS frame and returns (response_str, elapsed_ms)."""
     payload_bytes = payload.encode("ascii")
     length_header = len(payload_bytes).to_bytes(2, byteorder="big")
 
     start = time.perf_counter()
     try:
-        with socket.create_connection((host, port), timeout=timeout) as sock:
+        raw_sock = socket.create_connection((cfg.host, cfg.port), timeout=cfg.timeout)
+        if cfg.use_tls:
+            if cfg.insecure:
+                context = ssl._create_unverified_context()
+            else:
+                context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=cfg.ca_cert)
+            if cfg.cert_file and cfg.key_file:
+                context.load_cert_chain(certfile=cfg.cert_file, keyfile=cfg.key_file)
+            sock = context.wrap_socket(raw_sock, server_hostname=cfg.host)
+        else:
+            sock = raw_sock
+
+        with sock:
             sock.sendall(length_header + payload_bytes)
 
             raw_len = _recv_exact(sock, 2)
             resp_len = int.from_bytes(raw_len, byteorder="big")
             received = _recv_exact(sock, resp_len)
     except socket.timeout as exc:
-        raise Iso8583ConnectionError(f"Timed out after {timeout}s waiting on host {host}:{port}") from exc
+        raise Iso8583ConnectionError(f"Timed out after {cfg.timeout}s waiting on host {cfg.host}:{cfg.port}") from exc
     except ConnectionRefusedError as exc:
-        raise Iso8583ConnectionError(f"Connection refused by host {host}:{port} — is the ISO engine running?") from exc
+        raise Iso8583ConnectionError(f"Connection refused by host {cfg.host}:{cfg.port} — is the ISO engine running?") from exc
+    except ssl.SSLError as exc:
+        raise Iso8583ConnectionError(f"SSL/TLS handshake error with {cfg.host}:{cfg.port}: {exc}") from exc
     except OSError as exc:
-        raise Iso8583ConnectionError(f"Socket error communicating with {host}:{port}: {exc}") from exc
+        raise Iso8583ConnectionError(f"Socket error communicating with {cfg.host}:{cfg.port}: {exc}") from exc
 
     elapsed_ms = (time.perf_counter() - start) * 1000
     return received.decode("ascii"), elapsed_ms
@@ -390,13 +420,14 @@ def _recv_exact(sock: socket.socket, n: int) -> bytes:
 # CLI Presentation & Actions
 # --------------------------------------------------------------------------
 
-def print_banner(host: str, port: int) -> None:
+def print_banner(cfg: ConnectionConfig) -> None:
+    mode_str = f"{YELLOW}TLS 1.3 Encrypted{RESET}" if cfg.use_tls else f"{GRAY}Plain TCP{RESET}"
     print(f"""{CYAN}{BOLD}
 ╔══════════════════════════════════════════════════════════════════════╗
 ║              ISO 8583 TERMINAL & SWITCH CLIENT SIMULATOR             ║
-║            Connecting to TCP Socket Server on Port {port:<5}            ║
+║            Connecting to Socket Server on Port {cfg.port:<5}                 ║
 ╚══════════════════════════════════════════════════════════════════════╝{RESET}""")
-    print(f"Target Host: {BOLD}{host}:{port}{RESET}\n")
+    print(f"Target Host: {BOLD}{cfg.host}:{cfg.port}{RESET} | Security Mode: {mode_str}\n")
 
 
 def display_response(resp: str, elapsed_ms: float, resp_len: int) -> bool:
@@ -429,21 +460,21 @@ def display_response(resp: str, elapsed_ms: float, resp_len: int) -> bool:
     return parsed.approved
 
 
-def run_and_report(host: str, port: int, timeout: float, payload: str) -> bool:
+def run_and_report(cfg: ConnectionConfig, payload: str) -> bool:
     try:
-        resp, elapsed_ms = send_iso_frame(host, port, payload, timeout)
+        resp, elapsed_ms = send_iso_frame(cfg, payload)
         return display_response(resp, elapsed_ms, len(resp))
     except (Iso8583ConnectionError, FieldFormatError) as exc:
         print(f"{RED}✘ {exc}{RESET}")
         return False
 
 
-def action_echo(host: str, port: int, timeout: float, stan: str = "000001") -> bool:
+def action_echo(cfg: ConnectionConfig, stan: str = "000001") -> bool:
     print(f"\n{YELLOW}--- [0800] Network Management Echo Test ---{RESET}")
     fields = {7: now_iso_datetime(), 11: stan, 70: "301"}
     payload = pack_iso("0800", fields)
     print(f"Sending 0800 Echo Request (STAN={stan}, DE 70=301)...")
-    return run_and_report(host, port, timeout, payload)
+    return run_and_report(cfg, payload)
 
 
 def _prompt(msg: str, default: str) -> str:
@@ -451,7 +482,7 @@ def _prompt(msg: str, default: str) -> str:
     return val if val else default
 
 
-def action_purchase(host: str, port: int, timeout: float, pan: Optional[str] = None, amount_iso: Optional[str] = None, stan: Optional[str] = None) -> bool:
+def action_purchase(cfg: ConnectionConfig, pan: Optional[str] = None, amount_iso: Optional[str] = None, stan: Optional[str] = None) -> bool:
     print(f"\n{YELLOW}--- [0200] Purchase Authorization Request ---{RESET}")
     if pan is None:
         pan = _prompt("Enter Card PAN [default: 4532015588991234]: ", "4532015588991234")
@@ -474,11 +505,11 @@ def action_purchase(host: str, port: int, timeout: float, pan: Optional[str] = N
         41: "TERM0001", 42: "MERCHANT1234567", 49: "840",
     }
     payload = pack_iso("0200", fields)
-    print(f"\nTransmitting 0200 Purchase to {host}:{port}...")
-    return run_and_report(host, port, timeout, payload)
+    print(f"\nTransmitting 0200 Purchase to {cfg.host}:{cfg.port}...")
+    return run_and_report(cfg, payload)
 
 
-def action_reversal(host: str, port: int, timeout: float, stan: Optional[str] = None, pan: Optional[str] = None) -> bool:
+def action_reversal(cfg: ConnectionConfig, stan: Optional[str] = None, pan: Optional[str] = None) -> bool:
     print(f"\n{YELLOW}--- [0400] Transaction Reversal Request ---{RESET}")
     if stan is None:
         stan = _prompt("Enter 6-digit STAN of original transaction to reverse [default: 000123]: ", "000123")
@@ -491,10 +522,10 @@ def action_reversal(host: str, port: int, timeout: float, stan: Optional[str] = 
     }
     payload = pack_iso("0400", fields)
     print(f"\nTransmitting 0400 Reversal for STAN={stan}...")
-    return run_and_report(host, port, timeout, payload)
+    return run_and_report(cfg, payload)
 
 
-def action_emv_purchase(host: str, port: int, timeout: float, pan: str = "4532015588991234", amount_iso: str = "000000004999", stan: str = "000555") -> bool:
+def action_emv_purchase(cfg: ConnectionConfig, pan: str = "4532015588991234", amount_iso: str = "000000004999", stan: str = "000555") -> bool:
     print(f"\n{YELLOW}--- [0200 + DE 55] EMV Chip Card Transaction ---{RESET}")
     de55 = "9F2608A1B2C3D4E5F6079F9F3602001E9F10120110A000002A0000000000000000000000FF9C010082020100"
     fields = {
@@ -503,17 +534,17 @@ def action_emv_purchase(host: str, port: int, timeout: float, pan: str = "453201
     }
     payload = pack_iso("0200", fields)
     print("Transmitting 0200 EMV Chip Card Purchase (ARQC: 9F26, ATC: 9F36 in DE 55)...")
-    return run_and_report(host, port, timeout, payload)
+    return run_and_report(cfg, payload)
 
 
-def action_benchmark(host: str, port: int, timeout: float, iterations: int = 10) -> bool:
+def action_benchmark(cfg: ConnectionConfig, iterations: int = 10) -> bool:
     print(f"\n{YELLOW}--- Running Latency & Throughput Benchmark ({iterations} Echoes) ---{RESET}")
     latencies = []
     for i in range(1, iterations + 1):
         fields = {7: now_iso_datetime(), 11: f"{i:06d}", 70: "301"}
         payload = pack_iso("0800", fields)
         try:
-            _, elapsed = send_iso_frame(host, port, payload, timeout)
+            _, elapsed = send_iso_frame(cfg, payload)
             latencies.append(elapsed)
             print(f"  [{i}/{iterations}] Echo acknowledged — Latency: {elapsed:.2f} ms")
         except Iso8583ConnectionError as exc:
@@ -528,23 +559,23 @@ def action_benchmark(host: str, port: int, timeout: float, iterations: int = 10)
     return False
 
 
-def action_custom(host: str, port: int, timeout: float, payload: Optional[str] = None) -> bool:
+def action_custom(cfg: ConnectionConfig, payload: Optional[str] = None) -> bool:
     print(f"\n{YELLOW}--- Send Custom Raw ISO Message ---{RESET}")
     if not payload:
         payload = input("Paste your raw ISO 8583 payload string:\n> ").strip()
     if not payload:
         print("Empty payload. Aborted.")
         return False
-    return run_and_report(host, port, timeout, payload)
+    return run_and_report(cfg, payload)
 
 
-MENU_ACTIONS: Dict[str, tuple[str, Callable[[str, int, float], bool]]] = {
-    "1": ("Send 0800 Keep-Alive Echo Test (DE 70 = 301)", lambda h, p, t: action_echo(h, p, t)),
-    "2": ("Send 0200 Purchase Authorization ($25.50)", lambda h, p, t: action_purchase(h, p, t)),
-    "3": ("Send 0400 Transaction Reversal (Reverses previous 0200)", lambda h, p, t: action_reversal(h, p, t)),
-    "4": ("Send 0200 EMV Chip Card Transaction (with DE 55 BER-TLV)", lambda h, p, t: action_emv_purchase(h, p, t)),
-    "5": ("Send Custom Raw ISO 8583 Message", lambda h, p, t: action_custom(h, p, t)),
-    "6": ("Run Latency Benchmark (10 Consecutive Echoes)", lambda h, p, t: action_benchmark(h, p, t)),
+MENU_ACTIONS: Dict[str, tuple[str, Callable[[ConnectionConfig], bool]]] = {
+    "1": ("Send 0800 Keep-Alive Echo Test (DE 70 = 301)", lambda c: action_echo(c)),
+    "2": ("Send 0200 Purchase Authorization ($25.50)", lambda c: action_purchase(c)),
+    "3": ("Send 0400 Transaction Reversal (Reverses previous 0200)", lambda c: action_reversal(c)),
+    "4": ("Send 0200 EMV Chip Card Transaction (with DE 55 BER-TLV)", lambda c: action_emv_purchase(c)),
+    "5": ("Send Custom Raw ISO 8583 Message", lambda c: action_custom(c)),
+    "6": ("Run Latency Benchmark (10 Consecutive Echoes)", lambda c: action_benchmark(c)),
 }
 
 
@@ -553,6 +584,11 @@ def main(argv=None) -> int:
     parser.add_argument("host", nargs="?", default=DEFAULT_HOST, help="Host/IP of ISO 8583 engine")
     parser.add_argument("port", nargs="?", type=int, default=DEFAULT_PORT, help="Port of ISO 8583 engine")
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="Socket timeout in seconds")
+    parser.add_argument("--tls", action="store_true", help="Enable SSL/TLS encryption for socket communication")
+    parser.add_argument("--insecure", action="store_true", help="Allow unverified / self-signed server certificates")
+    parser.add_argument("--ca-cert", help="Path to CA certificate PEM to verify server")
+    parser.add_argument("--cert", help="Path to client certificate PEM for Mutual TLS (mTLS)")
+    parser.add_argument("--key", help="Path to client private key PEM for Mutual TLS (mTLS)")
     parser.add_argument("--action", choices=["echo", "purchase", "reversal", "emv", "benchmark"], help="Run a specific action non-interactively and exit")
     parser.add_argument("--payload", help="Send a custom raw ISO 8583 payload non-interactively")
     parser.add_argument("--pan", help="Override Card PAN for purchase/reversal")
@@ -562,28 +598,39 @@ def main(argv=None) -> int:
 
     args = parser.parse_args(argv)
 
+    cfg = ConnectionConfig(
+        host=args.host,
+        port=args.port,
+        timeout=args.timeout,
+        use_tls=args.tls,
+        insecure=args.insecure,
+        cert_file=args.cert,
+        key_file=args.key,
+        ca_cert=args.ca_cert
+    )
+
     # Non-interactive CLI mode
     if args.payload:
-        success = action_custom(args.host, args.port, args.timeout, args.payload)
+        success = action_custom(cfg, args.payload)
         return 0 if success else 1
 
     if args.action:
         if args.action == "echo":
-            success = action_echo(args.host, args.port, args.timeout, args.stan or "000001")
+            success = action_echo(cfg, args.stan or "000001")
         elif args.action == "purchase":
-            success = action_purchase(args.host, args.port, args.timeout, args.pan or "4532015588991234", args.amount or "000000002550", args.stan or "000123")
+            success = action_purchase(cfg, args.pan or "4532015588991234", args.amount or "000000002550", args.stan or "000123")
         elif args.action == "reversal":
-            success = action_reversal(args.host, args.port, args.timeout, args.stan or "000123", args.pan or "4532015588991234")
+            success = action_reversal(cfg, args.stan or "000123", args.pan or "4532015588991234")
         elif args.action == "emv":
-            success = action_emv_purchase(args.host, args.port, args.timeout, args.pan or "4532015588991234", args.amount or "000000004999", args.stan or "000555")
+            success = action_emv_purchase(cfg, args.pan or "4532015588991234", args.amount or "000000004999", args.stan or "000555")
         elif args.action == "benchmark":
-            success = action_benchmark(args.host, args.port, args.timeout, args.iterations)
+            success = action_benchmark(cfg, args.iterations)
         else:
             success = False
         return 0 if success else 1
 
     # Interactive Menu Mode
-    print_banner(args.host, args.port)
+    print_banner(cfg)
 
     while True:
         print(f"{BOLD}Select an action to simulate:{RESET}")
@@ -602,7 +649,7 @@ def main(argv=None) -> int:
             print(f"{RED}Invalid option. Please choose 1-6 or q.{RESET}")
         else:
             _, handler = action
-            handler(args.host, args.port, args.timeout)
+            handler(cfg)
 
         input(f"\n{BLUE}Press Enter to return to menu...{RESET}")
         print("\n" + "=" * 70 + "\n")

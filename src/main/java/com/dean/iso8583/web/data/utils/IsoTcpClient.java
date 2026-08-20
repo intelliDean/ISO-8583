@@ -4,7 +4,7 @@ import com.dean.iso8583.core.IsoPacker;
 import com.dean.iso8583.core.IsoUnpacker;
 import com.dean.iso8583.core.dto.IsoMessage;
 import com.dean.iso8583.server.IsoTcpProperties;
-import com.dean.iso8583.web.data.dto.SimulateResult;
+import com.dean.iso8583.web.data.dto.WebDTOs;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -22,7 +22,7 @@ public class IsoTcpClient {
 
     private final IsoTcpProperties properties;
 
-    public SimulateResult simulate(String rawRequest) {
+    public WebDTOs.SimulateResult simulate(String rawRequest) {
         Instant start = Instant.now();
 
         try {
@@ -116,10 +116,10 @@ public class IsoTcpClient {
         }
     }
 
-    private SimulateResult buildSuccessResult(String request, IsoMessage response, Duration elapsed) {
+    private WebDTOs.SimulateResult buildSuccessResult(String request, IsoMessage response, Duration elapsed) {
         String responseCode = response.getField(39);
 
-        return SimulateResult.builder()
+        return WebDTOs.SimulateResult.builder()
                 .requestPayload(request)
                 .responsePayload(IsoPacker.packToString(response))
                 .responseMti(response.getMti())
@@ -131,8 +131,8 @@ public class IsoTcpClient {
                 .build();
     }
 
-    private SimulateResult buildFailureResult(String request, Exception exception, Duration elapsed) {
-        return SimulateResult.builder()
+    private WebDTOs.SimulateResult buildFailureResult(String request, Exception exception, Duration elapsed) {
+        return WebDTOs.SimulateResult.builder()
                 .requestPayload(request)
                 .responsePayload(null)
                 .responseMti(null)

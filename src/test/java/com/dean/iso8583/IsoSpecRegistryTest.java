@@ -2,8 +2,8 @@ package com.dean.iso8583;
 
 import com.dean.iso8583.core.IsoPacker;
 import com.dean.iso8583.core.IsoUnpacker;
+import com.dean.iso8583.core.dto.IsoDTOs;
 import com.dean.iso8583.core.dto.IsoMessage;
-import com.dean.iso8583.core.dto.IsoSpecDefinition;
 import com.dean.iso8583.core.spec.IsoSpecRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,14 +31,14 @@ class IsoSpecRegistryTest {
 
     @Test
     void testFallbackToDefaultSpec() {
-        IsoSpecDefinition spec = registry.getSpec("unknown-dialect-xyz");
+        IsoDTOs.IsoSpecDefinition spec = registry.getSpec("unknown-dialect-xyz");
         assertNotNull(spec);
         assertEquals("iso8583-1987", spec.id());
     }
 
     @Test
     void testVisaSmsDialectPackAndUnpack() {
-        IsoSpecDefinition visaSpec = registry.getSpec("visa-sms");
+        IsoDTOs.IsoSpecDefinition visaSpec = registry.getSpec("visa-sms");
         assertEquals("Visa SMS (Single Message System)", visaSpec.name());
 
         IsoMessage visaReq = new IsoMessage("0200");

@@ -6,14 +6,9 @@ import com.dean.iso8583.core.IsoUnpacker;
 import com.dean.iso8583.core.clearing.BatchClearingEngine;
 import com.dean.iso8583.core.clearing.dto.ClearingBatch;
 import com.dean.iso8583.core.clearing.dto.ClearingRecord;
-import com.dean.iso8583.core.crypto.CryptoKeyRegistry;
-import com.dean.iso8583.core.crypto.CryptoUtils;
-import com.dean.iso8583.core.crypto.IsoPinBlockEngine;
-import com.dean.iso8583.core.crypto.MacEngine;
-import com.dean.iso8583.core.dto.IsoFieldDef;
-import com.dean.iso8583.core.dto.IsoFieldType;
-import com.dean.iso8583.core.dto.IsoMessage;
-import com.dean.iso8583.core.dto.IsoSpecDefinition;
+import com.dean.iso8583.core.crypto.*;
+import com.dean.iso8583.core.crypto.dto.DukptDtos;
+import com.dean.iso8583.core.dto.*;
 import com.dean.iso8583.core.echo.dto.ChannelStatusReport;
 import com.dean.iso8583.core.echo.dto.EchoResult;
 import com.dean.iso8583.core.echo.IsoEchoManager;
@@ -59,18 +54,18 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     private final DistributedLockService lockService;
 
     @Override
-    public Map<Integer, IsoFieldDef> getCatalog() {
+    public Map<Integer, IsoDTOs.IsoFieldDef> getCatalog() {
         return IsoSpec.getAllFieldDefs();
     }
 
     @Override
-    public Map<String, IsoSpecDefinition> getSpecs() {
+    public Map<String, IsoDTOs.IsoSpecDefinition> getSpecs() {
         return isoSpecRegistry.getAllSpecs();
     }
 
     @Override
-    public UnpackResult unpackMessage(UnpackRequest request) {
-        IsoSpecDefinition spec = isoSpecRegistry.getSpec(request.specId());
+    public WebDTOs.UnpackResult unpackMessage(WebDTOs.UnpackRequest request) {
+        IsoDTOs.IsoSpecDefinition spec = isoSpecRegistry.getSpec(request.specId());
 
         IsoMessage message = IsoUnpacker.unpack(request.payload(), request.hasHeader(), spec);
 
@@ -78,14 +73,14 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     }
 
     @Override
-    public PackResult packMessage(PackRequest request) {
-        IsoSpecDefinition spec = isoSpecRegistry.getSpec(request.specId());
+    public WebDTOs.PackResult packMessage(WebDTOs.PackRequest request) {
+        IsoDTOs.IsoSpecDefinition spec = isoSpecRegistry.getSpec(request.specId());
 
         IsoMessage message = buildIsoMessage(request);
 
         String rawPayload = IsoPacker.packToString(message, spec);
 
-        return new PackResult(
+        return new WebDTOs.PackResult(
                 rawPayload,
                 message.getPrimaryBitmapHex(),
                 message.getSecondaryBitmapHex(),
@@ -94,12 +89,12 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     }
 
     @Override
-    public SimulateResult simulateTransaction(SimulateRequest request) {
+    public WebDTOs.SimulateResult simulateTransaction(WebDTOs.SimulateRequest request) {
         return isoTcpClient.simulate(request.rawPayload());
     }
 
     @Override
-    public EmvParseResponse parseEmv(EmvParseRequest request) {
+    public WebDTOs.EmvParseResponse parseEmv(WebDTOs.EmvParseRequest request) {
         EmvParseResult result = EmvTlvParser.parse(request.de55Hex());
 
         String arqcValue  = result.getValue("9F26");
@@ -113,7 +108,7 @@ public class ISO8583ServiceImpl implements ISO8583Service {
                 result.hasTag("9F26"),
                 atcDecimal);
 
-        return new EmvParseResponse(
+        return new WebDTOs.EmvParseResponse(
                 result.rawHex(),
                 result.tags().size(),
                 result.tags(),
@@ -141,17 +136,22 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     }
 
     @Override
-    public PinEncodeResponse encodePin(PinEncodeRequest request) {
+    public WebDTOs.PinEncodeResponse encodePin(WebDTOs.PinEncodeRequest request) {
         byte[] key = resolveKey(request.keyHex(), request.keyId(), "DEFAULT_ZPK_ACQ");
         String clearBlock = IsoPinBlockEngine.encodeClearPinBlock(request.pin(), request.pan(), request.format());
         String encryptedBlock = IsoPinBlockEngine.encryptPin(request.pin(), request.pan(), request.format(), key);
 
-        String keyName = request.keyId() != null ? request.keyId() : (request.keyHex() != null ? "CUSTOM_KEY" : "DEFAULT_ZPK_ACQ");
-        return new PinEncodeResponse(clearBlock, encryptedBlock, request.format(), keyName);
+        String keyName = request.keyId() != null
+                ? request.keyId()
+                : (request.keyHex() != null
+                    ? "CUSTOM_KEY"
+                    : "DEFAULT_ZPK_ACQ"
+                );
+        return new WebDTOs.PinEncodeResponse(clearBlock, encryptedBlock, request.format(), keyName);
     }
 
     @Override
-    public PinTranslateResponse translatePin(PinTranslateRequest request) {
+    public WebDTOs.PinTranslateResponse translatePin(WebDTOs.PinTranslateRequest request) {
         byte[] srcKey = resolveKey(request.srcKeyHex(), request.srcKeyId(), "DEFAULT_ZPK_ACQ");
         byte[] dstKey = resolveKey(request.dstKeyHex(), request.dstKeyId(), "DEFAULT_ZPK_ISS");
         String dstPan = request.dstPan() != null ? request.dstPan() : request.srcPan();
@@ -166,39 +166,39 @@ public class ISO8583ServiceImpl implements ISO8583Service {
                 dstKey
         );
 
-        return new PinTranslateResponse(translated, request.srcFormat(), request.dstFormat(), true);
+        return new WebDTOs.PinTranslateResponse(translated, request.srcFormat(), request.dstFormat(), true);
     }
 
     @Override
-    public MacGenerateResponse generateMac(MacGenerateRequest request) {
+    public WebDTOs.MacGenerateResponse generateMac(WebDTOs.MacGenerateRequest request) {
         byte[] key = resolveKey(request.keyHex(), request.keyId(), "DEFAULT_MAK");
 
         byte[] payloadBytes = request.rawPayload().getBytes(java.nio.charset.StandardCharsets.US_ASCII);
         String mac = MacEngine.calculateRetailMac(payloadBytes, key);
 
         String keyName = request.keyId() != null ? request.keyId() : (request.keyHex() != null ? "CUSTOM_KEY" : "DEFAULT_MAK");
-        return new MacGenerateResponse(mac, "ISO 9797-1 Algorithm 3 (Retail MAC)", keyName);
+        return new WebDTOs.MacGenerateResponse(mac, "ISO 9797-1 Algorithm 3 (Retail MAC)", keyName);
     }
 
     @Override
-    public MacVerifyResponse verifyMac(MacVerifyRequest request) {
+    public WebDTOs.MacVerifyResponse verifyMac(WebDTOs.MacVerifyRequest request) {
         byte[] key = resolveKey(request.keyHex(), request.keyId(), "DEFAULT_MAK");
 
         byte[] payloadBytes = request.rawPayload().getBytes(java.nio.charset.StandardCharsets.US_ASCII);
         String calculatedMac = MacEngine.calculateRetailMac(payloadBytes, key);
 
         boolean valid = calculatedMac.equalsIgnoreCase(request.expectedMac().trim());
-        return new MacVerifyResponse(valid, calculatedMac, valid ? "MAC valid" : "MAC mismatch");
+        return new WebDTOs.MacVerifyResponse(valid, calculatedMac, valid ? "MAC valid" : "MAC mismatch");
     }
 
     @Override
-    public ClearingBatch generateClearingBatch(ClearingBatchRequest request) {
+    public ClearingBatch generateClearingBatch(WebDTOs.ClearingBatchRequest request) {
         String networkId = (request != null && request.networkId() != null) ? request.networkId() : "MASTERCARD-IPM";
         return batchClearingEngine.generateClearingBatch(networkId);
     }
 
     @Override
-    public ClearingRecord fileChargeback(ChargebackRequest request) {
+    public ClearingRecord fileChargeback(WebDTOs.ChargebackRequest request) {
         return batchClearingEngine.fileChargeback(
                 request.stan(),
                 request.maskedPan(),
@@ -208,7 +208,7 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     }
 
     @Override
-    public ClearingBatch parseClearingBatch(ClearingParseRequest request) {
+    public ClearingBatch parseClearingBatch(WebDTOs.ClearingParseRequest request) {
         return batchClearingEngine.parseClearingFile(request.rawBatchFile());
     }
 
@@ -223,12 +223,12 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     }
 
     @Override
-    public ResiliencyStatusResponse getResiliencyStatus() {
+    public WebDTOs.ResiliencyStatusResponse getResiliencyStatus() {
         String persistence = "PostgreSQL (Schema V1.0) / In-Memory Active Fallback";
         String lockEngine  = "Redis 7 / In-Memory Reentrant Cluster Lock";
         String outbox      = "Active (Transactional Outbox Pattern & Kafka Streamer)";
 
-        return new ResiliencyStatusResponse(
+        return new WebDTOs.ResiliencyStatusResponse(
                 persistence,
                 transactionStore.size(),
                 batchClearingEngine.getBatches().size(),
@@ -242,34 +242,34 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     }
 
     @Override
-    public com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveIpekResponse deriveDukptIpek(com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveIpekRequest request) {
+    public DukptDtos.DeriveIpekResponse deriveDukptIpek(DukptDtos.DeriveIpekRequest request) {
         byte[] bdk = resolveKey(request.bdkHex(), null, "DEFAULT_BDK");
         byte[] ksn = CryptoUtils.hexToBytes(request.ksnHex());
-        byte[] ipek = com.dean.iso8583.core.crypto.DukptEngine.deriveIpek(bdk, ksn);
-        byte[] maskedKsn = com.dean.iso8583.core.crypto.DukptEngine.maskKsn(ksn);
+        byte[] ipek = DukptEngine.deriveIpek(bdk, ksn);
+        byte[] maskedKsn = DukptEngine.maskKsn(ksn);
 
-        return new com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveIpekResponse(
+        return new DukptDtos.DeriveIpekResponse(
                 CryptoUtils.bytesToHex(bdk),
                 request.ksnHex().toUpperCase(),
                 CryptoUtils.bytesToHex(maskedKsn),
                 CryptoUtils.bytesToHex(ipek),
-                com.dean.iso8583.core.crypto.DukptEngine.extractKeySetId(ksn),
-                com.dean.iso8583.core.crypto.DukptEngine.extractDeviceId(ksn),
-                com.dean.iso8583.core.crypto.DukptEngine.extractTransactionCounter(ksn)
+                DukptEngine.extractKeySetId(ksn),
+                DukptEngine.extractDeviceId(ksn),
+                DukptEngine.extractTransactionCounter(ksn)
         );
     }
 
     @Override
-    public com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveKeyResponse deriveDukptKey(com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveKeyRequest request) {
+    public DukptDtos.DeriveKeyResponse deriveDukptKey(DukptDtos.DeriveKeyRequest request) {
         byte[] bdk = resolveKey(request.bdkHex(), null, "DEFAULT_BDK");
         byte[] ksn = CryptoUtils.hexToBytes(request.ksnHex());
-        byte[] ipek = com.dean.iso8583.core.crypto.DukptEngine.deriveIpek(bdk, ksn);
-        byte[] txnKey = com.dean.iso8583.core.crypto.DukptEngine.deriveTransactionKey(ipek, ksn);
-        byte[] pinKey = com.dean.iso8583.core.crypto.DukptEngine.derivePinKey(txnKey);
-        byte[] macKey = com.dean.iso8583.core.crypto.DukptEngine.deriveMacKey(txnKey);
-        byte[] dataKey = com.dean.iso8583.core.crypto.DukptEngine.deriveDataKey(txnKey);
+        byte[] ipek = DukptEngine.deriveIpek(bdk, ksn);
+        byte[] txnKey = DukptEngine.deriveTransactionKey(ipek, ksn);
+        byte[] pinKey = DukptEngine.derivePinKey(txnKey);
+        byte[] macKey = DukptEngine.deriveMacKey(txnKey);
+        byte[] dataKey =DukptEngine.deriveDataKey(txnKey);
 
-        return new com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveKeyResponse(
+        return new DukptDtos.DeriveKeyResponse(
                 CryptoUtils.bytesToHex(bdk),
                 request.ksnHex().toUpperCase(),
                 CryptoUtils.bytesToHex(ipek),
@@ -277,36 +277,36 @@ public class ISO8583ServiceImpl implements ISO8583Service {
                 CryptoUtils.bytesToHex(pinKey),
                 CryptoUtils.bytesToHex(macKey),
                 CryptoUtils.bytesToHex(dataKey),
-                com.dean.iso8583.core.crypto.DukptEngine.extractKeySetId(ksn),
-                com.dean.iso8583.core.crypto.DukptEngine.extractDeviceId(ksn),
-                com.dean.iso8583.core.crypto.DukptEngine.extractTransactionCounter(ksn)
+                DukptEngine.extractKeySetId(ksn),
+                DukptEngine.extractDeviceId(ksn),
+                DukptEngine.extractTransactionCounter(ksn)
         );
     }
 
     @Override
-    public com.dean.iso8583.core.crypto.dto.DukptDtos.DecryptDukptPinResponse decryptDukptPin(com.dean.iso8583.core.crypto.dto.DukptDtos.DecryptDukptPinRequest request) {
+    public DukptDtos.DecryptDukptPinResponse decryptDukptPin(DukptDtos.DecryptDukptPinRequest request) {
         byte[] bdk = resolveKey(request.bdkHex(), null, "DEFAULT_BDK");
         byte[] ksn = CryptoUtils.hexToBytes(request.ksnHex());
-        com.dean.iso8583.core.crypto.PinBlockFormat format = (request.format() != null && !request.format().isBlank())
-                ? com.dean.iso8583.core.crypto.PinBlockFormat.valueOf(request.format().toUpperCase())
-                : com.dean.iso8583.core.crypto.PinBlockFormat.FORMAT_0;
+        PinBlockFormat format = (request.format() != null && !request.format().isBlank())
+                ? PinBlockFormat.valueOf(request.format().toUpperCase())
+                : PinBlockFormat.FORMAT_0;
 
-        byte[] ipek = com.dean.iso8583.core.crypto.DukptEngine.deriveIpek(bdk, ksn);
-        byte[] txnKey = com.dean.iso8583.core.crypto.DukptEngine.deriveTransactionKey(ipek, ksn);
-        byte[] pinKey = com.dean.iso8583.core.crypto.DukptEngine.derivePinKey(txnKey);
+        byte[] ipek = DukptEngine.deriveIpek(bdk, ksn);
+        byte[] txnKey = DukptEngine.deriveTransactionKey(ipek, ksn);
+        byte[] pinKey = DukptEngine.derivePinKey(txnKey);
 
         byte[] cipherBytes = CryptoUtils.hexToBytes(request.encryptedPinBlockHex());
         byte[] clearBytes = CryptoUtils.desDecryptEcb(cipherBytes, pinKey);
         String clearHex = CryptoUtils.bytesToHex(clearBytes);
-        String clearPin = com.dean.iso8583.core.crypto.IsoPinBlockEngine.decodeClearPinBlock(clearHex, request.pan(), format);
+        String clearPin = IsoPinBlockEngine.decodeClearPinBlock(clearHex, request.pan(), format);
 
-        return new com.dean.iso8583.core.crypto.dto.DukptDtos.DecryptDukptPinResponse(
+        return new DukptDtos.DecryptDukptPinResponse(
                 clearPin,
                 clearHex,
                 request.encryptedPinBlockHex().toUpperCase(),
                 CryptoUtils.bytesToHex(pinKey),
                 request.ksnHex().toUpperCase(),
-                com.dean.iso8583.core.crypto.DukptEngine.extractTransactionCounter(ksn),
+                DukptEngine.extractTransactionCounter(ksn),
                 format.name(),
                 true,
                 "DUKPT PIN block successfully decrypted via PEK variant"
@@ -322,9 +322,9 @@ public class ISO8583ServiceImpl implements ISO8583Service {
                 .orElseThrow(() -> new IllegalArgumentException("Cryptographic key not found in registry: " + id));
     }
 
-    private UnpackResult buildUnpackResult(IsoMessage message, IsoSpecDefinition spec) {
+    private WebDTOs.UnpackResult buildUnpackResult(IsoMessage message, IsoDTOs.IsoSpecDefinition spec) {
 
-        List<FieldDetail> details = message.getFields()
+        List<WebDTOs.FieldDetail> details = message.getFields()
                 .entrySet()
                 .stream()
                 .map(entry -> toFieldDetail(entry, spec))
@@ -335,7 +335,7 @@ public class ISO8583ServiceImpl implements ISO8583Service {
                 .stream()
                 .toList();
 
-        return new UnpackResult(
+        return new WebDTOs.UnpackResult(
                 message.getHeader(),
                 message.getMti(),
                 IsoMtiDescriptions.describe(message.getMti()),
@@ -346,14 +346,14 @@ public class ISO8583ServiceImpl implements ISO8583Service {
         );
     }
 
-    private FieldDetail toFieldDetail(Map.Entry<Integer, String> entry, IsoSpecDefinition spec) {
+    private WebDTOs.FieldDetail toFieldDetail(Map.Entry<Integer, String> entry, IsoDTOs.IsoSpecDefinition spec) {
         int fieldId = entry.getKey();
 
-        IsoFieldDef definition = (spec != null && spec.getFieldDef(fieldId) != null)
+        IsoDTOs.IsoFieldDef definition = (spec != null && spec.getFieldDef(fieldId) != null)
                 ? spec.getFieldDef(fieldId)
                 : IsoSpec.getFieldDef(fieldId);
 
-        return new FieldDetail(
+        return new WebDTOs.FieldDetail(
                 fieldId,
                 definition != null ? definition.name() : "Custom Field",
                 definition != null ? definition.type().name() : IsoFieldType.LLVAR_ALPHA.name(),
@@ -361,7 +361,7 @@ public class ISO8583ServiceImpl implements ISO8583Service {
         );
     }
 
-    private IsoMessage buildIsoMessage(PackRequest request) {
+    private IsoMessage buildIsoMessage(WebDTOs.PackRequest request) {
         IsoMessage message = new IsoMessage(request.mti());
         message.setHeader(request.header());
 

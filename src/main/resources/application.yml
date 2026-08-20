@@ -15,6 +15,13 @@ iso:
     port: ${ISO_TCP_PORT:8583}
     max-frame-length: ${ISO_TCP_MAX_FRAME_LENGTH:8192}
     shutdown-timeout: 10
+    tls:
+      enabled: ${ISO_TCP_TLS_ENABLED:false}
+      keystore-path: ${ISO_TCP_TLS_KEYSTORE_PATH:classpath:certs/server-keystore.p12}
+      keystore-password: ${ISO_TCP_TLS_KEYSTORE_PASSWORD:changeit}
+      truststore-path: ${ISO_TCP_TLS_TRUSTSTORE_PATH:classpath:certs/server-truststore.p12}
+      truststore-password: ${ISO_TCP_TLS_TRUSTSTORE_PASSWORD:changeit}
+      client-auth: ${ISO_TCP_TLS_CLIENT_AUTH:NONE}
   echo:
     enabled: ${ISO_ECHO_ENABLED:false}
     interval-seconds: ${ISO_ECHO_INTERVAL_SECONDS:30}

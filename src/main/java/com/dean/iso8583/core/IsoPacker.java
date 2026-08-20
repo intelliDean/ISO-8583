@@ -1,9 +1,6 @@
 package com.dean.iso8583.core;
 
-import com.dean.iso8583.core.dto.IsoFieldDef;
-import com.dean.iso8583.core.dto.IsoFieldType;
-import com.dean.iso8583.core.dto.IsoMessage;
-import com.dean.iso8583.core.dto.IsoSpecDefinition;
+import com.dean.iso8583.core.dto.*;
 
 import java.util.Objects;
 
@@ -48,7 +45,7 @@ public final class IsoPacker {
      * @param spec    Network specification definition (or null to use standard IsoSpec)
      * @return Packed ASCII/Hex ISO payload string
      */
-    public static String packToString(IsoMessage message, IsoSpecDefinition spec) {
+    public static String packToString(IsoMessage message, IsoDTOs.IsoSpecDefinition spec) {
         Objects.requireNonNull(message, "message cannot be null");
 
         StringBuilder packed = new StringBuilder();
@@ -85,27 +82,27 @@ public final class IsoPacker {
         }
     }
 
-    private static void appendDataElements(StringBuilder packed, IsoMessage message, IsoSpecDefinition spec) {
+    private static void appendDataElements(StringBuilder packed, IsoMessage message, IsoDTOs.IsoSpecDefinition spec) {
         message.getFields().forEach((fieldId, value) -> {
             validateFieldId(fieldId);
-            IsoFieldDef definition = getFieldDefinition(fieldId, spec);
+            IsoDTOs.IsoFieldDef definition = getFieldDefinition(fieldId, spec);
             packed.append(formatField(definition, value));
         });
     }
 
-    private static IsoFieldDef getFieldDefinition(int fieldId, IsoSpecDefinition spec) {
+    private static IsoDTOs.IsoFieldDef getFieldDefinition(int fieldId, IsoDTOs.IsoSpecDefinition spec) {
         if (spec != null && spec.getFieldDef(fieldId) != null) {
             return spec.getFieldDef(fieldId);
         }
-        IsoFieldDef definition = IsoSpec.getFieldDef(fieldId);
+        IsoDTOs.IsoFieldDef definition = IsoSpec.getFieldDef(fieldId);
         if (definition != null) {
             return definition;
         }
         return defaultFieldDefinition(fieldId);
     }
 
-    private static IsoFieldDef defaultFieldDefinition(int fieldId) {
-        return IsoFieldDef.builder()
+    private static IsoDTOs.IsoFieldDef defaultFieldDefinition(int fieldId) {
+        return IsoDTOs.IsoFieldDef.builder()
                 .fieldId(fieldId)
                 .name("Field " + fieldId)
                 .type(IsoFieldType.LLVAR_ALPHA)
@@ -114,7 +111,7 @@ public final class IsoPacker {
                 .build();
     }
 
-    private static String formatField(IsoFieldDef definition, String value) {
+    private static String formatField(IsoDTOs.IsoFieldDef definition, String value) {
         Objects.requireNonNull(value, "Value cannot be null for field: %d".formatted(definition.fieldId()));
 
         return switch (definition.type()) {
@@ -125,17 +122,17 @@ public final class IsoPacker {
         };
     }
 
-    private static String formatFixedNumeric(IsoFieldDef definition, String value) {
+    private static String formatFixedNumeric(IsoDTOs.IsoFieldDef definition, String value) {
         validateLength(definition, value);
         return padLeftWithZeros(value, definition.maxLength());
     }
 
-    private static String formatFixedAlpha(IsoFieldDef definition, String value) {
+    private static String formatFixedAlpha(IsoDTOs.IsoFieldDef definition, String value) {
         validateLength(definition, value);
         return padRightWithSpaces(value, definition.maxLength());
     }
 
-    private static String formatVariableLength(IsoFieldDef definition, String value, int lengthDigits) {
+    private static String formatVariableLength(IsoDTOs.IsoFieldDef definition, String value, int lengthDigits) {
         validateLength(definition, value);
         String lengthPrefix = formatLengthPrefix(value.length(), lengthDigits);
         return lengthPrefix + value;
@@ -167,7 +164,7 @@ public final class IsoPacker {
         }
     }
 
-    private static void validateLength(IsoFieldDef definition, String value) {
+    private static void validateLength(IsoDTOs.IsoFieldDef definition, String value) {
         if (value.length() > definition.maxLength()) {
             throw new IllegalArgumentException(
                     "Field %d (%s) exceeds maximum length of %d. Actual length: %d"

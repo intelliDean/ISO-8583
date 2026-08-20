@@ -1,10 +1,6 @@
 package com.dean.iso8583.core;
 
-import com.dean.iso8583.core.dto.IsoFieldDef;
-import com.dean.iso8583.core.dto.IsoFieldType;
-import com.dean.iso8583.core.dto.IsoMessage;
-import com.dean.iso8583.core.dto.IsoSpecDefinition;
-import com.dean.iso8583.core.dto.PayloadReader;
+import com.dean.iso8583.core.dto.*;
 import org.springframework.util.StringUtils;
 
 /**
@@ -54,7 +50,7 @@ public final class IsoUnpacker {
      * @param spec      custom IsoSpecDefinition (or null for default)
      * @return unpacked ISO message
      */
-    public static IsoMessage unpack(String payload, boolean hasHeader, IsoSpecDefinition spec) {
+    public static IsoMessage unpack(String payload, boolean hasHeader, IsoDTOs.IsoSpecDefinition spec) {
         validatePayload(payload);
 
         PayloadReader reader = new PayloadReader(payload);
@@ -103,7 +99,7 @@ public final class IsoUnpacker {
     }
 
     private static void readDataElements(
-            PayloadReader reader, IsoMessage message, boolean[] activeFields, IsoSpecDefinition spec) {
+            PayloadReader reader, IsoMessage message, boolean[] activeFields, IsoDTOs.IsoSpecDefinition spec) {
         for (int fieldId = 2; fieldId <= MAX_FIELD_ID; fieldId++) {
             if (activeFields[fieldId]) {
                 readDataElement(reader, message, fieldId, spec);
@@ -112,23 +108,23 @@ public final class IsoUnpacker {
     }
 
     private static void readDataElement(
-            PayloadReader reader, IsoMessage message, int fieldId, IsoSpecDefinition spec) {
-        IsoFieldDef definition = getFieldDefinition(fieldId, spec);
+            PayloadReader reader, IsoMessage message, int fieldId, IsoDTOs.IsoSpecDefinition spec) {
+        IsoDTOs.IsoFieldDef definition = getFieldDefinition(fieldId, spec);
         int valueLength = determineValueLength(reader, definition, fieldId);
         String value = reader.read(valueLength, "DE %d value".formatted(fieldId));
         message.setField(fieldId, value);
     }
 
-    private static IsoFieldDef getFieldDefinition(int fieldId, IsoSpecDefinition spec) {
+    private static IsoDTOs.IsoFieldDef getFieldDefinition(int fieldId, IsoDTOs.IsoSpecDefinition spec) {
         if (spec != null && spec.getFieldDef(fieldId) != null) {
             return spec.getFieldDef(fieldId);
         }
-        IsoFieldDef definition = IsoSpec.getFieldDef(fieldId);
+        IsoDTOs.IsoFieldDef definition = IsoSpec.getFieldDef(fieldId);
         return definition != null ? definition : createGenericFieldDefinition(fieldId);
     }
 
-    private static IsoFieldDef createGenericFieldDefinition(int fieldId) {
-        return IsoFieldDef.builder()
+    private static IsoDTOs.IsoFieldDef createGenericFieldDefinition(int fieldId) {
+        return IsoDTOs.IsoFieldDef.builder()
                 .fieldId(fieldId)
                 .name("Field " + fieldId)
                 .type(IsoFieldType.LLVAR_ALPHA)
@@ -137,7 +133,7 @@ public final class IsoUnpacker {
                 .build();
     }
 
-    private static int determineValueLength(PayloadReader reader, IsoFieldDef definition, int fieldId) {
+    private static int determineValueLength(PayloadReader reader, IsoDTOs.IsoFieldDef definition, int fieldId) {
         return switch (definition.type()) {
             case FIXED_NUMERIC, FIXED_ALPHA, BINARY_FIXED -> definition.maxLength();
             case LLVAR_NUMERIC, LLVAR_ALPHA -> readVariableLength(reader, 2, fieldId);

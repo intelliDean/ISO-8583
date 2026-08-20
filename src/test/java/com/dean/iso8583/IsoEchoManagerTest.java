@@ -6,7 +6,7 @@ import com.dean.iso8583.core.echo.dto.EchoResult;
 import com.dean.iso8583.core.echo.dto.IsoEchoProperties;
 import com.dean.iso8583.core.echo.enums.ChannelHealthStatus;
 import com.dean.iso8583.core.echo.enums.NetworkManagementCode;
-import com.dean.iso8583.web.data.dto.SimulateResult;
+import com.dean.iso8583.web.data.dto.WebDTOs;
 import com.dean.iso8583.web.data.utils.IsoTcpClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -88,7 +88,7 @@ class IsoEchoManagerTest {
         @Test
         @DisplayName("Successful 0800 echo sets status to HEALTHY and records latency")
         void successfulEchoShouldMarkChannelHealthy() {
-            SimulateResult mockSuccess = SimulateResult.builder()
+            WebDTOs.SimulateResult mockSuccess = WebDTOs.SimulateResult.builder()
                     .success(true)
                     .responseMti("0810")
                     .responseCode("00")
@@ -120,7 +120,7 @@ class IsoEchoManagerTest {
         @Test
         @DisplayName("Failed echo degrades channel status, and exceeding threshold marks channel DOWN")
         void consecutiveFailuresShouldDegradeAndMarkChannelDown() {
-            SimulateResult mockFailure = SimulateResult.builder()
+            WebDTOs.SimulateResult mockFailure = WebDTOs.SimulateResult.builder()
                     .success(false)
                     .responseCode("ERR")
                     .message("Connection refused")
@@ -153,14 +153,14 @@ class IsoEchoManagerTest {
         @Test
         @DisplayName("Channel recovers from DOWN to HEALTHY upon next successful echo")
         void channelShouldRecoverToHealthyOnSuccess() {
-            SimulateResult mockFailure = SimulateResult.builder()
+            WebDTOs.SimulateResult mockFailure = WebDTOs.SimulateResult.builder()
                     .success(false)
                     .responseCode("ERR")
                     .message("Timeout")
                     .roundtripMs(5000)
                     .build();
 
-            SimulateResult mockSuccess = SimulateResult.builder()
+            WebDTOs.SimulateResult mockSuccess = WebDTOs.SimulateResult.builder()
                     .success(true)
                     .responseMti("0810")
                     .responseCode("00")

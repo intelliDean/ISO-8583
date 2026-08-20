@@ -1,5 +1,7 @@
 package com.dean.iso8583.core.crypto.dto;
 
+import lombok.Builder;
+
 /**
  * Developer Note:
  * Data Transfer Objects for DUKPT (ANSI X9.24) Key Derivation & PIN Decryption operations.
@@ -8,11 +10,13 @@ public final class DukptDtos {
 
     private DukptDtos() {}
 
+    @Builder
     public record DeriveIpekRequest(
             String bdkHex,
             String ksnHex
     ) {}
 
+    @Builder
     public record DeriveIpekResponse(
             String bdkHex,
             String ksnHex,
@@ -23,11 +27,13 @@ public final class DukptDtos {
             long transactionCounter
     ) {}
 
+    @Builder
     public record DeriveKeyRequest(
             String bdkHex,
             String ksnHex
     ) {}
 
+    @Builder
     public record DeriveKeyResponse(
             String bdkHex,
             String ksnHex,
@@ -41,6 +47,7 @@ public final class DukptDtos {
             long transactionCounter
     ) {}
 
+    @Builder
     public record DecryptDukptPinRequest(
             String bdkHex,
             String ksnHex,
@@ -49,6 +56,7 @@ public final class DukptDtos {
             String format // "FORMAT_0", "FORMAT_1", "FORMAT_3"
     ) {}
 
+    @Builder
     public record DecryptDukptPinResponse(
             String clearPin,
             String clearPinBlockHex,

@@ -2,26 +2,27 @@ package com.dean.iso8583.web.service;
 
 import com.dean.iso8583.core.clearing.dto.ClearingBatch;
 import com.dean.iso8583.core.clearing.dto.ClearingRecord;
-import com.dean.iso8583.core.dto.IsoFieldDef;
-import com.dean.iso8583.core.dto.IsoSpecDefinition;
+import com.dean.iso8583.core.crypto.dto.DukptDtos;
+import com.dean.iso8583.core.dto.IsoDTOs;
 import com.dean.iso8583.core.echo.dto.ChannelStatusReport;
 import com.dean.iso8583.core.echo.dto.EchoResult;
 import com.dean.iso8583.core.reversal.TransactionRecord;
 import com.dean.iso8583.web.data.dto.*;
 
+import java.util.Collection;
 import java.util.Map;
 
 public interface ISO8583Service {
 
-    Map<Integer, IsoFieldDef> getCatalog();
+    Map<Integer, IsoDTOs.IsoFieldDef> getCatalog();
 
-    Map<String, IsoSpecDefinition> getSpecs();
+    Map<String, IsoDTOs.IsoSpecDefinition> getSpecs();
 
-    UnpackResult unpackMessage(UnpackRequest request);
+    WebDTOs.UnpackResult unpackMessage(WebDTOs.UnpackRequest request);
 
-    PackResult packMessage(PackRequest request);
+    WebDTOs.PackResult packMessage(WebDTOs.PackRequest request);
 
-    SimulateResult simulateTransaction(SimulateRequest request);
+    WebDTOs.SimulateResult simulateTransaction(WebDTOs.SimulateRequest request);
 
     /**
      * <p>Parses the hex-encoded DE 55 BER-TLV stream from an EMV chip/contactless
@@ -30,14 +31,14 @@ public interface ISO8583Service {
      * @param request contains the raw DE 55 hex string
      * @return structured parse result with all decoded tags and fraud signals
      */
-    EmvParseResponse parseEmv(EmvParseRequest request);
+    WebDTOs.EmvParseResponse parseEmv(WebDTOs.EmvParseRequest request);
 
     /**
      * Returns all tracked transaction records from the state store.
      *
      * @return collection of transaction records
      */
-    java.util.Collection<TransactionRecord> getTransactions();
+    Collection<TransactionRecord> getTransactions();
 
     /**
      * Executes an on-demand ISO 8583 0800 Keep-Alive Echo test against the peer host.
@@ -56,65 +57,65 @@ public interface ISO8583Service {
     /**
      * Encodes and encrypts a clear PIN into an ISO 9564 PIN block (DE 52).
      */
-    PinEncodeResponse encodePin(PinEncodeRequest request);
+    WebDTOs.PinEncodeResponse encodePin(WebDTOs.PinEncodeRequest request);
 
     /**
      * Translates an encrypted PIN block across different key zones or block formats.
      */
-    PinTranslateResponse translatePin(PinTranslateRequest request);
+    WebDTOs.PinTranslateResponse translatePin(WebDTOs.PinTranslateRequest request);
 
     /**
      * Calculates an ISO 9797-1 Retail MAC over an ISO 8583 message.
      */
-    MacGenerateResponse generateMac(MacGenerateRequest request);
+    WebDTOs.MacGenerateResponse generateMac(WebDTOs.MacGenerateRequest request);
 
     /**
      * Verifies the ISO 9797-1 Retail MAC of an ISO 8583 message.
      */
-    MacVerifyResponse verifyMac(MacVerifyRequest request);
+    WebDTOs.MacVerifyResponse verifyMac(WebDTOs.MacVerifyRequest request);
 
     /**
      * Generates an end-of-day Dual-Message System (DMS) 1240 settlement clearing batch.
      */
-    ClearingBatch generateClearingBatch(ClearingBatchRequest request);
+    ClearingBatch generateClearingBatch(WebDTOs.ClearingBatchRequest request);
 
     /**
      * Files a 1440 Chargeback dispute against a settled transaction.
      */
-    ClearingRecord fileChargeback(ChargebackRequest request);
+    ClearingRecord fileChargeback(WebDTOs.ChargebackRequest request);
 
     /**
      * Parses an incoming raw batch clearing file.
      */
-    ClearingBatch parseClearingBatch(ClearingParseRequest request);
+    ClearingBatch parseClearingBatch(WebDTOs.ClearingParseRequest request);
 
     /**
      * Retrieves all archived clearing batches.
      */
-    java.util.Collection<ClearingBatch> getClearingBatches();
+    Collection<ClearingBatch> getClearingBatches();
 
     /**
      * Retrieves all filed chargeback records.
      */
-    java.util.Collection<ClearingRecord> getChargebacks();
+    Collection<ClearingRecord> getChargebacks();
 
     /**
      * Retrieves distributed persistence, distributed locking, and Kafka Outbox telemetry.
      */
-    ResiliencyStatusResponse getResiliencyStatus();
+    WebDTOs.ResiliencyStatusResponse getResiliencyStatus();
 
     /**
      * Derives Initial PIN Encryption Key (IPEK) from BDK and KSN.
      */
-    com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveIpekResponse deriveDukptIpek(com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveIpekRequest request);
+   DukptDtos.DeriveIpekResponse deriveDukptIpek(DukptDtos.DeriveIpekRequest request);
 
     /**
      * Derives Transaction Key and variants (PEK, MAK, DEK) from BDK/IPEK and KSN.
      */
-    com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveKeyResponse deriveDukptKey(com.dean.iso8583.core.crypto.dto.DukptDtos.DeriveKeyRequest request);
+    DukptDtos.DeriveKeyResponse deriveDukptKey(DukptDtos.DeriveKeyRequest request);
 
     /**
      * Decrypts a DUKPT-encrypted PIN block using BDK and KSN.
      */
-    com.dean.iso8583.core.crypto.dto.DukptDtos.DecryptDukptPinResponse decryptDukptPin(com.dean.iso8583.core.crypto.dto.DukptDtos.DecryptDukptPinRequest request);
+    DukptDtos.DecryptDukptPinResponse decryptDukptPin(DukptDtos.DecryptDukptPinRequest request);
 }

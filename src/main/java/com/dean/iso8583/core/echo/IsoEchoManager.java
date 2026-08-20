@@ -7,7 +7,7 @@ import com.dean.iso8583.core.echo.dto.EchoResult;
 import com.dean.iso8583.core.echo.dto.IsoEchoProperties;
 import com.dean.iso8583.core.echo.enums.ChannelHealthStatus;
 import com.dean.iso8583.core.echo.enums.NetworkManagementCode;
-import com.dean.iso8583.web.data.dto.SimulateResult;
+import com.dean.iso8583.web.data.dto.WebDTOs;
 import com.dean.iso8583.web.data.utils.IsoTcpClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -88,7 +88,7 @@ public class IsoEchoManager {
         log.debug("Sending ISO 8583 0800 Keep-Alive Echo — STAN={} DE70={}",
                 stan, NetworkManagementCode.ECHO_TEST.getCode());
 
-        SimulateResult simulation = tcpClient.simulate(packedRequest);
+        WebDTOs.SimulateResult simulation = tcpClient.simulate(packedRequest);
 
         if (simulation.success() && "00".equals(simulation.responseCode()) && "0810".equals(simulation.responseMti())) {
             return handleSuccessfulEcho(stan, transmissionDateTime, packedRequest, simulation);
@@ -138,7 +138,7 @@ public class IsoEchoManager {
             String stan,
             String transmissionDateTime,
             String packedRequest,
-            SimulateResult simulation
+            WebDTOs.SimulateResult simulation
     ) {
         successfulEchoes.incrementAndGet();
         consecutiveFailures.set(0);
@@ -172,7 +172,7 @@ public class IsoEchoManager {
             String stan,
             String transmissionDateTime,
             String packedRequest,
-            SimulateResult simulation
+            WebDTOs.SimulateResult simulation
     ) {
         failedEchoes.incrementAndGet();
         int failures = consecutiveFailures.incrementAndGet();

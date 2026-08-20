@@ -80,7 +80,7 @@ public class BatchClearingEngine {
 
         appendFileHeader(fileBuilder, batchId, settlementDate);
 
-        PresentmentResult presentments = appendPresentments(fileBuilder, records);
+        ClearingDTOs.PresentmentResult presentments = appendPresentments(fileBuilder, records);
         int chargebackCount = appendChargebacks(fileBuilder, records);
 
         ControlTotals totals = ControlTotals.of(
@@ -144,7 +144,7 @@ public class BatchClearingEngine {
      * Builds 1240 First Presentment records from all eligible AUTHORISED transactions,
      * appending each packed message to the file and accumulating control totals.
      */
-    private PresentmentResult appendPresentments(StringBuilder fileBuilder, List<ClearingRecord> records) {
+    private ClearingDTOs.PresentmentResult appendPresentments(StringBuilder fileBuilder, List<ClearingRecord> records) {
         long grossCents = 0;
         long interchangeCents = 0;
         int count = 0;
@@ -153,7 +153,7 @@ public class BatchClearingEngine {
 
             if (!isEligibleForPresentment(txn)) continue;
 
-            PresentmentEntry entry = buildPresentmentEntry(txn);
+            ClearingDTOs.PresentmentEntry entry = buildPresentmentEntry(txn);
             records.add(entry.record());
             fileBuilder.append(entry.rawPacked())
                     .append("\n");
@@ -163,7 +163,7 @@ public class BatchClearingEngine {
             count++;
         }
 
-        return PresentmentResult.builder()
+        return ClearingDTOs.PresentmentResult.builder()
                 .grossCents(grossCents)
                 .interchangeCents(interchangeCents)
                 .count(count)
@@ -176,7 +176,7 @@ public class BatchClearingEngine {
                 && txn.authorisedAmount() != null;
     }
 
-    private PresentmentEntry buildPresentmentEntry(TransactionRecord txn) {
+    private ClearingDTOs.PresentmentEntry buildPresentmentEntry(TransactionRecord txn) {
         String amountIso = txn.authorisedAmount();
         String interchangeFeeIso = InterchangeFeeCalculator.calculateFee(amountIso);
 
@@ -203,7 +203,7 @@ public class BatchClearingEngine {
                 rawPacked
         );
 
-        return new PresentmentEntry(record, rawPacked, amtCents, feeCents);
+        return new ClearingDTOs.PresentmentEntry(record, rawPacked, amtCents, feeCents);
     }
 
     /**
@@ -235,7 +235,7 @@ public class BatchClearingEngine {
         fileBuilder.append(trailerLine);
     }
 
-    private void persistAndPublish(ClearingBatch batch, PresentmentResult presentments, ControlTotals totals) {
+    private void persistAndPublish(ClearingBatch batch, ClearingDTOs.PresentmentResult presentments, ControlTotals totals) {
         clearingRepository.saveBatch(batch);
         log.info("Generated Clearing Batch {} — {} presentments, gross=${}, interchange=${}, net=${}",
                 batch.batchId(), presentments.count(),

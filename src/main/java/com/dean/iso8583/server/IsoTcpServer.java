@@ -26,21 +26,24 @@ import java.util.concurrent.TimeUnit;
 public class IsoTcpServer implements SmartLifecycle {
 
     private final IsoTcpProperties properties;
+    private final com.dean.iso8583.server.tls.IsoTlsProperties tlsProperties;
+    private final com.dean.iso8583.server.tls.IsoTlsContextFactory tlsContextFactory;
     private final ExecutorService clientExecutor;
     private final IsoMessageProcessor messageProcessor;
 
     private volatile ServerSocket serverSocket;
     private volatile boolean running;
 
-    /**
-     * {@link @RequiredArgsConstructor} is never used because I want to take control
-     * of the {@link ExecutorService} to use so I use constructor
-     * instead to use {@link Executors#newVirtualThreadPerTaskExecutor}
-     *
-     * */
-    public IsoTcpServer(IsoTcpProperties properties, IsoMessageProcessor messageProcessor) {
+    public IsoTcpServer(
+            IsoTcpProperties properties,
+            IsoMessageProcessor messageProcessor,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.dean.iso8583.server.tls.IsoTlsProperties tlsProperties,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.dean.iso8583.server.tls.IsoTlsContextFactory tlsContextFactory
+    ) {
         this.properties = properties;
         this.messageProcessor = messageProcessor;
+        this.tlsProperties = tlsProperties;
+        this.tlsContextFactory = tlsContextFactory;
         this.clientExecutor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
@@ -49,14 +52,22 @@ public class IsoTcpServer implements SmartLifecycle {
         if (running) return;
 
         try {
-            serverSocket = new ServerSocket(properties.port());
+            if (tlsProperties != null && tlsProperties.isEnabled() && tlsContextFactory != null) {
+                javax.net.ssl.SSLContext sslContext = tlsContextFactory.createSslContext();
+                javax.net.ssl.SSLServerSocket sslServerSocket = (javax.net.ssl.SSLServerSocket) sslContext.getServerSocketFactory().createServerSocket(properties.port());
+                tlsContextFactory.configureServerSocket(sslServerSocket);
+                serverSocket = sslServerSocket;
+                log.info("ISO 8583 TCP Host Simulator started on port {} with TLS/mTLS encryption (clientAuth={})",
+                        properties.port(), tlsProperties.getClientAuth());
+            } else {
+                serverSocket = new ServerSocket(properties.port());
+                log.info("ISO 8583 TCP Host Simulator started on port {} (Plain TCP)", properties.port());
+            }
+
             running = true;
-
-            log.info("ISO 8583 TCP Host Simulator started on port {}", properties.port());
-
             Thread.startVirtualThread(this::acceptConnections);
 
-        } catch (IOException exception) {
+        } catch (Exception exception) {
             throw new IllegalStateException(
                     "Failed to start ISO 8583 TCP server on port: %d".formatted(properties.port()),
                     exception
@@ -82,6 +93,28 @@ public class IsoTcpServer implements SmartLifecycle {
     }
 
     private void handleClient(Socket socket) {
+        if (socket instanceof javax.net.ssl.SSLSocket sslSocket) {
+            try {
+                sslSocket.startHandshake();
+                javax.net.ssl.SSLSession session = sslSocket.getSession();
+                String peerInfo = "Anonymous";
+                try {
+                    if (session.getPeerCertificates() != null && session.getPeerCertificates().length > 0) {
+                        peerInfo = session.getPeerPrincipal().getName();
+                    }
+                } catch (javax.net.ssl.SSLPeerUnverifiedException ignored) {
+                }
+                log.info("TLS Handshake established with {} — Protocol: {}, Cipher: {}, Peer: {}",
+                        socket.getRemoteSocketAddress(), session.getProtocol(), session.getCipherSuite(), peerInfo);
+            } catch (IOException e) {
+                log.warn("TLS Handshake failed with {}: {}", socket.getRemoteSocketAddress(), e.getMessage());
+                try {
+                    socket.close();
+                } catch (IOException ignored) {}
+                return;
+            }
+        }
+
         try (
                 socket;
                 DataInputStream input = new DataInputStream(socket.getInputStream());

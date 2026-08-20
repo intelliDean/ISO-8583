@@ -1,6 +1,6 @@
 package com.dean.iso8583.core;
 
-import com.dean.iso8583.core.dto.IsoFieldDef;
+import com.dean.iso8583.core.dto.IsoDTOs;
 import com.dean.iso8583.core.dto.IsoFieldType;
 
 import java.util.HashMap;
@@ -8,13 +8,13 @@ import java.util.Map;
 
 public class IsoSpec {
 
-    private static final Map<Integer, IsoFieldDef> FIELD_DEFS;
+    private static final Map<Integer, IsoDTOs.IsoFieldDef> FIELD_DEFS;
 
     static {
-        Map<Integer, IsoFieldDef> fields = new HashMap<>();
+        Map<Integer, IsoDTOs.IsoFieldDef> fields = new HashMap<>();
 
         // Bitmaps
-        fields.put(1, IsoFieldDef.builder() //decided to use builder
+        fields.put(1, IsoDTOs.IsoFieldDef.builder() //decided to use builder
                 .fieldId(1)
                 .name("Secondary Bitmap")
                 .type(IsoFieldType.BINARY_FIXED)
@@ -24,14 +24,14 @@ public class IsoSpec {
         );
 
         // Data Elements 2 - 128
-        fields.put(2, new IsoFieldDef(
+        fields.put(2, new IsoDTOs.IsoFieldDef(
                 2,
                 "Primary Account Number (PAN)",
                 IsoFieldType.LLVAR_NUMERIC,
                 19,
                 "Card Number"));
 
-        fields.put(3, new IsoFieldDef(
+        fields.put(3, new IsoDTOs.IsoFieldDef(
                 3,
                 "Processing Code",
                 IsoFieldType.FIXED_NUMERIC,
@@ -39,7 +39,7 @@ public class IsoSpec {
                 "Transaction type code (e.g. 000000 = Purchase)")
         );
 
-        fields.put(4, new IsoFieldDef(
+        fields.put(4, new IsoDTOs.IsoFieldDef(
                 4,
                 "Amount, Transaction",
                 IsoFieldType.FIXED_NUMERIC,
@@ -47,7 +47,7 @@ public class IsoSpec {
                 "Transaction amount in minor units (e.g. cents)")
         );
 
-        fields.put(7, new IsoFieldDef(
+        fields.put(7, new IsoDTOs.IsoFieldDef(
                 7,
                 "Transmission Date & Time",
                 IsoFieldType.FIXED_NUMERIC,
@@ -55,7 +55,7 @@ public class IsoSpec {
                 "MMDDhhmmss format")
         );
 
-        fields.put(11, new IsoFieldDef(
+        fields.put(11, new IsoDTOs.IsoFieldDef(
                 11,
                 "Systems Trace Audit Number (STAN)",
                 IsoFieldType.FIXED_NUMERIC,
@@ -63,7 +63,7 @@ public class IsoSpec {
                 "Unique sequence number for transaction tracing")
         );
 
-        fields.put(12, new IsoFieldDef(
+        fields.put(12, new IsoDTOs.IsoFieldDef(
                 12,
                 "Time, Local Transaction",
                 IsoFieldType.FIXED_NUMERIC,
@@ -71,7 +71,7 @@ public class IsoSpec {
                 "hhmmss format")
         );
 
-        fields.put(13, new IsoFieldDef(
+        fields.put(13, new IsoDTOs.IsoFieldDef(
                 13,
                 "Date, Local Transaction",
                 IsoFieldType.FIXED_NUMERIC,
@@ -79,7 +79,7 @@ public class IsoSpec {
                 "MMDD format")
         );
 
-        fields.put(14, new IsoFieldDef(
+        fields.put(14, new IsoDTOs.IsoFieldDef(
                 14,
                 "Date, Expiration",
                 IsoFieldType.FIXED_NUMERIC,
@@ -87,7 +87,7 @@ public class IsoSpec {
                 "YYMM format")
         );
 
-        fields.put(22, new IsoFieldDef(
+        fields.put(22, new IsoDTOs.IsoFieldDef(
                 22,
                 "Point of Service Entry Mode",
                 IsoFieldType.FIXED_NUMERIC,
@@ -95,7 +95,7 @@ public class IsoSpec {
                 "POS entry mode (e.g. 021 = Chip/PAN)")
         );
 
-        fields.put(32, new IsoFieldDef(
+        fields.put(32, new IsoDTOs.IsoFieldDef(
                 32,
                 "Acquiring Institution ID",
                 IsoFieldType.LLVAR_NUMERIC,
@@ -103,7 +103,7 @@ public class IsoSpec {
                 "Acquirer Identification Code")
         );
 
-        fields.put(35, new IsoFieldDef(
+        fields.put(35, new IsoDTOs.IsoFieldDef(
                 35,
                 "Track 2 Data",
                 IsoFieldType.LLVAR_ALPHA,
@@ -111,7 +111,7 @@ public class IsoSpec {
                 "Magstripe Track 2 data")
         );
 
-        fields.put(37, new IsoFieldDef(
+        fields.put(37, new IsoDTOs.IsoFieldDef(
                 37,
                 "Retrieval Reference Number (RRN)",
                 IsoFieldType.FIXED_ALPHA,
@@ -119,7 +119,7 @@ public class IsoSpec {
                 "Unique reference number")
         );
 
-        fields.put(38, new IsoFieldDef(
+        fields.put(38, new IsoDTOs.IsoFieldDef(
                 38,
                 "Authorization Identification Response",
                 IsoFieldType.FIXED_ALPHA,
@@ -127,7 +127,7 @@ public class IsoSpec {
                 "Approval Code from Issuer")
         );
 
-        fields.put(39, new IsoFieldDef(
+        fields.put(39, new IsoDTOs.IsoFieldDef(
                 39,
                 "Response Code",
                 IsoFieldType.FIXED_ALPHA,
@@ -135,7 +135,7 @@ public class IsoSpec {
                 "Action Code (00 = Approved, 51 = Insufficient Funds, etc.)")
         );
 
-        fields.put(41, new IsoFieldDef(
+        fields.put(41, new IsoDTOs.IsoFieldDef(
                 41,
                 "Card Acceptor Terminal ID (CATID)",
                 IsoFieldType.FIXED_ALPHA,
@@ -143,7 +143,7 @@ public class IsoSpec {
                 "Terminal Identification")
         );
 
-        fields.put(42, new IsoFieldDef(
+        fields.put(42, new IsoDTOs.IsoFieldDef(
                 42,
                 "Card Acceptor ID (CAID)",
                 IsoFieldType.FIXED_ALPHA,
@@ -151,7 +151,7 @@ public class IsoSpec {
                 "Merchant Identification")
         );
 
-        fields.put(43, new IsoFieldDef(
+        fields.put(43, new IsoDTOs.IsoFieldDef(
                 43,
                 "Card Acceptor Name/Location",
                 IsoFieldType.FIXED_ALPHA,
@@ -159,7 +159,7 @@ public class IsoSpec {
                 "Merchant Name & Address")
         );
 
-        fields.put(48, new IsoFieldDef(
+        fields.put(48, new IsoDTOs.IsoFieldDef(
                 48,
                 "Private Data",
                 IsoFieldType.LLLVAR_ALPHA,
@@ -167,7 +167,7 @@ public class IsoSpec {
                 "Custom network/issuer specific private data")
         );
 
-        fields.put(49, new IsoFieldDef(
+        fields.put(49, new IsoDTOs.IsoFieldDef(
                 49,
                 "Currency Code, Transaction",
                 IsoFieldType.FIXED_NUMERIC,
@@ -175,7 +175,7 @@ public class IsoSpec {
                 "ISO 4217 numeric currency code (e.g. 840 = USD)")
         );
 
-        fields.put(52, new IsoFieldDef(
+        fields.put(52, new IsoDTOs.IsoFieldDef(
                 52,
 
                 "Personal Identification Number (PIN) Data",
@@ -184,14 +184,14 @@ public class IsoSpec {
                 "Encrypted PIN Block")
         );
 
-        fields.put(70, new IsoFieldDef(
+        fields.put(70, new IsoDTOs.IsoFieldDef(
                 70,
                 "Network Management Information Code", IsoFieldType.FIXED_NUMERIC,
                 3,
                 "NMIC (e.g. 001 = Logon, 301 = Echo Test)")
         );
 
-        fields.put(90, new IsoFieldDef(
+        fields.put(90, new IsoDTOs.IsoFieldDef(
                 90,
                 "Original Data Elements",
                 IsoFieldType.FIXED_NUMERIC,
@@ -199,7 +199,7 @@ public class IsoSpec {
                 "Used for Reversals (Original MTI, STAN, RRN, etc.)")
         );
 
-        fields.put(102, new IsoFieldDef(
+        fields.put(102, new IsoDTOs.IsoFieldDef(
                 102,
                 "Account Identification 1",
                 IsoFieldType.LLVAR_ALPHA,
@@ -207,7 +207,7 @@ public class IsoSpec {
                 "Source Account")
         );
 
-        fields.put(103, new IsoFieldDef(
+        fields.put(103, new IsoDTOs.IsoFieldDef(
                 103,
                 "Account Identification 2",
                 IsoFieldType.LLVAR_ALPHA,
@@ -217,11 +217,11 @@ public class IsoSpec {
         FIELD_DEFS = Map.copyOf(fields);
     }
 
-    public static IsoFieldDef getFieldDef(int fieldId) {
+    public static IsoDTOs.IsoFieldDef getFieldDef(int fieldId) {
         return FIELD_DEFS.get(fieldId);
     }
 
-    public static Map<Integer, IsoFieldDef> getAllFieldDefs() {
+    public static Map<Integer, IsoDTOs.IsoFieldDef> getAllFieldDefs() {
         return FIELD_DEFS;
     }
 }

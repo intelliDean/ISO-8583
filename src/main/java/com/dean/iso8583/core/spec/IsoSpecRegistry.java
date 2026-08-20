@@ -1,6 +1,6 @@
 package com.dean.iso8583.core.spec;
 
-import com.dean.iso8583.core.dto.IsoSpecDefinition;
+import com.dean.iso8583.core.dto.IsoDTOs;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +32,7 @@ public class IsoSpecRegistry {
 
     public static final String DEFAULT_SPEC_ID = "iso8583-1987";
     private static final String SPEC_LOCATION = "classpath*:specs/*.json";
-    private final Map<String, IsoSpecDefinition> specMap = new ConcurrentHashMap<>();
+    private final Map<String, IsoDTOs.IsoSpecDefinition> specMap = new ConcurrentHashMap<>();
 
     @PostConstruct
     public void init() {
@@ -71,7 +71,7 @@ public class IsoSpecRegistry {
     private void loadSpec(Resource resource) {
         try (InputStream inputStream = resource.getInputStream()) {
 
-            IsoSpecDefinition spec = objectMapper.readValue(inputStream, IsoSpecDefinition.class);
+            IsoDTOs.IsoSpecDefinition spec = objectMapper.readValue(inputStream, IsoDTOs.IsoSpecDefinition.class);
 
             registerSpec(spec);
 
@@ -89,7 +89,7 @@ public class IsoSpecRegistry {
      *
      * @param spec specification to register
      */
-    public void registerSpec(IsoSpecDefinition spec) {
+    public void registerSpec(IsoDTOs.IsoSpecDefinition spec) {
         Objects.requireNonNull(spec, "spec cannot be null");
 
         Objects.requireNonNull(spec.id(), "spec.id cannot be null");
@@ -108,7 +108,7 @@ public class IsoSpecRegistry {
      * @param specId specification identifier
      * @return matching specification or the default specification
      */
-    public IsoSpecDefinition getSpec(String specId) {
+    public IsoDTOs.IsoSpecDefinition getSpec(String specId) {
 
         if (specId == null || specId.isBlank()) {
             return getDefaultSpec();
@@ -116,7 +116,7 @@ public class IsoSpecRegistry {
 
         String normalizedId = normalizeSpecId(specId);
 
-        IsoSpecDefinition spec = specMap.get(normalizedId);
+        IsoDTOs.IsoSpecDefinition spec = specMap.get(normalizedId);
 
         if (spec == null) {
             log.warn("ISO 8583 spec '{}' not found. Falling back to '{}'", specId, DEFAULT_SPEC_ID);
@@ -133,8 +133,8 @@ public class IsoSpecRegistry {
      * @throws IllegalStateException if the default specification
      *                               has not been registered
      */
-    public IsoSpecDefinition getDefaultSpec() {
-        IsoSpecDefinition defaultSpec = specMap.get(DEFAULT_SPEC_ID);
+    public IsoDTOs.IsoSpecDefinition getDefaultSpec() {
+        IsoDTOs.IsoSpecDefinition defaultSpec = specMap.get(DEFAULT_SPEC_ID);
 
         if (defaultSpec == null) {
             throw new IllegalStateException("Default ISO 8583 spec '%s' is not registered".formatted(DEFAULT_SPEC_ID));
@@ -148,7 +148,7 @@ public class IsoSpecRegistry {
      *
      * @return unmodifiable view of registered specifications
      */
-    public Map<String, IsoSpecDefinition> getAllSpecs() {
+    public Map<String, IsoDTOs.IsoSpecDefinition> getAllSpecs() {
         return Collections.unmodifiableMap(specMap);
     }
 
