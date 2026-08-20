@@ -1145,11 +1145,11 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label for="pinInput">PIN (4-12 digits):</label>
-                        <input type="text" id="pinInput" placeholder="1234" maxlength="12">
+                        <input type="text" id="pinInput" value="1234" maxlength="12">
                     </div>
                     <div class="form-group">
                         <label for="panInput">PAN (card number):</label>
-                        <input type="text" id="panInput" placeholder="4532015588991234">
+                        <input type="text" id="panInput" value="4532015588991234">
                     </div>
                 </div>
                 <div class="form-row">
@@ -1176,7 +1176,7 @@
                 <h3>ISO 9797-1 Retail MAC Calculator</h3>
                 <div class="form-group">
                     <label for="macPayload">ISO 8583 Message Payload:</label>
-                    <textarea id="macPayload" rows="3" placeholder="Raw ISO 8583 payload string (DE 64/128 will be stripped before MAC calculation)"></textarea>
+                    <textarea id="macPayload" rows="3" placeholder="Raw ISO 8583 payload string">600000000002007020000000C0800016453201558899123400000000000000002550000123TERM0001MERCHANT1234567840</textarea>
                 </div>
                 <div class="form-group">
                     <label for="macKeyHex">Double-Length MAC Key hex (optional):</label>
@@ -1207,11 +1207,11 @@
             <div class="form-row-3">
                 <div class="form-group">
                     <label for="transBlockHex">Encrypted PIN Block (DE 52) hex:</label>
-                    <input type="text" id="transBlockHex" placeholder="16 hex chars" style="font-family:'Fira Code',monospace;">
+                    <input type="text" id="transBlockHex" value="8B304F2DDD3476AD" style="font-family:'Fira Code',monospace;">
                 </div>
                 <div class="form-group">
                     <label for="transSrcPan">Source PAN:</label>
-                    <input type="text" id="transSrcPan" placeholder="4532015588991234">
+                    <input type="text" id="transSrcPan" value="4532015588991234">
                 </div>
                 <div class="form-group">
                     <label for="transSrcFormat">Source Format:</label>
@@ -1703,6 +1703,7 @@ function populateBuilderFields(mti) {
 window.addEventListener('DOMContentLoaded', () => {
     populateBuilderFields('0200');
     buildBitmapGrids();
+    loadEmvPreset('contact');
     setTimeout(loadTelemetryQuiet, 800);
 });
 
@@ -1994,9 +1995,10 @@ function renderEmvResult(data) {
 
 // ─── Crypto Lab ───────────────────────────────────
 async function encodePin() {
+    const panVal = document.getElementById('panInput').value.trim();
     const body = {
         pin: document.getElementById('pinInput').value.trim(),
-        pan: document.getElementById('panInput').value.trim(),
+        pan: panVal,
         format: document.getElementById('pinFormat').value,
         keyHex: document.getElementById('pinKeyHex').value.trim() || null,
         keyId: null
@@ -2016,6 +2018,16 @@ async function encodePin() {
             <div class="result-val">${escHtml(data.encryptedBlockHex || '—')}</div>
             <div class="result-label" style="margin-top:0.5rem">Format / Key Used</div>
             <div style="color:var(--text-muted); font-size:0.75rem">${data.format || ''} — ${data.keyUsed || ''}</div>`;
+        
+        // Auto-sync into Cross-Zone Translation fields
+        if (data.encryptedBlockHex) {
+            const transBlock = document.getElementById('transBlockHex');
+            if (transBlock) transBlock.value = data.encryptedBlockHex;
+            const transPan = document.getElementById('transSrcPan');
+            if (transPan) transPan.value = panVal;
+            const transFormat = document.getElementById('transSrcFormat');
+            if (transFormat) transFormat.value = data.format || 'FORMAT_0';
+        }
     } catch (e) { el.innerHTML = `<span class="result-fail">Error: ${e.message}</span>`; }
 }
 
@@ -2038,6 +2050,12 @@ async function generateMac() {
             <div class="result-val" style="font-size:1.1rem">${escHtml(data.macHex || '—')}</div>
             <div class="result-label" style="margin-top:0.5rem">Algorithm</div>
             <div style="color:var(--text-muted); font-size:0.75rem">${data.algorithm || ''} — Key: ${data.keyUsed || ''}</div>`;
+        
+        // Auto-sync into Expected MAC for 1-click verify
+        if (data.macHex) {
+            const exp = document.getElementById('macExpected');
+            if (exp) exp.value = data.macHex;
+        }
     } catch (e) { el.innerHTML = `<span class="result-fail">Error: ${e.message}</span>`; }
 }
 
@@ -2069,27 +2087,32 @@ async function verifyMac() {
 }
 
 async function translatePin() {
+    const srcFmt = document.getElementById('transSrcFormat').value;
+    const dstFmt = document.getElementById('transDstFormat').value;
     const body = {
         encryptedBlockHex: document.getElementById('transBlockHex').value.trim(),
         srcPan:   document.getElementById('transSrcPan').value.trim(),
-        srcFormat: document.getElementById('transSrcFormat').value,
+        srcFormat: srcFmt,
         srcKeyHex: document.getElementById('transSrcKey').value.trim() || null,
-        dstFormat: document.getElementById('transDstFormat').value,
+        dstFormat: dstFmt,
         dstKeyHex: document.getElementById('transDstKey').value.trim() || null,
         dstPan: null
     };
     const el = document.getElementById('pinTransResult');
     el.style.display = 'block';
+    el.innerHTML = '<div class="spinner"></div> Translating...';
     try {
         const res = await fetch(API + '/api/iso/crypto/pin/translate', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
         });
         const data = await res.json();
+        const srcDisplay = data.srcFormat || srcFmt;
+        const dstDisplay = data.dstFormat || dstFmt;
         el.innerHTML = `
             <div class="result-label">Translated PIN Block</div>
             <div class="result-val" style="font-size:1.05rem">${escHtml(data.translatedBlockHex || '—')}</div>
             <div class="result-label" style="margin-top:0.5rem">Translation</div>
-            <div style="color:var(--text-muted); font-size:0.75rem">${data.srcFormat} → ${data.dstFormat} &nbsp;|&nbsp; Status: <span class="${data.success ? 'result-ok' : 'result-fail'}">${data.success ? '✅ Success' : '❌ Failed'}</span></div>`;
+            <div style="color:var(--text-muted); font-size:0.75rem">${srcDisplay} → ${dstDisplay} &nbsp;|&nbsp; Status: <span class="${data.success ? 'result-ok' : 'result-fail'}">${data.success ? '✅ Success' : '❌ Failed'}</span></div>`;
     } catch (e) { el.innerHTML = `<span class="result-fail">Error: ${e.message}</span>`; }
 }
 
@@ -2231,16 +2254,38 @@ function renderResiliency(data) {
 }
 
 function renderTelemetry(data) {
-    setTelVal('telChannelStatus', data.status || '—',     data.status === 'HEALTHY' ? 'green' : 'amber');
-    setTelVal('telLastRtt',      data.lastRttMs != null ? data.lastRttMs : '—', 'blue');
-    setTelVal('telMinRtt',       data.minRttMs != null  ? data.minRttMs : '—', 'green');
-    setTelVal('telMaxRtt',       data.maxRttMs != null  ? data.maxRttMs : '—', 'amber');
-    setTelVal('telEchosSent',    data.echosSent   ?? '—', 'blue');
-    setTelVal('telEchosOk',      data.echosOk     ?? '—', 'green');
-    setTelVal('telEchosFailed',  data.echosFailed ?? '—', 'red');
-    const rate = data.echosSent ? ((data.echosOk / data.echosSent) * 100).toFixed(1) : '—';
+    if (!data) return;
+    const status = data.status || 'HEALTHY';
+    setTelVal('telChannelStatus', status, status === 'HEALTHY' ? 'green' : 'amber');
+    
+    const lastLatency = data.lastLatencyMs !== undefined && data.lastLatencyMs !== null 
+        ? data.lastLatencyMs 
+        : (data.lastRttMs !== undefined ? data.lastRttMs : '—');
+    setTelVal('telLastRtt', lastLatency, 'blue');
+    
+    const minLatency = data.minRttMs !== undefined && data.minRttMs !== null 
+        ? data.minRttMs 
+        : (lastLatency !== '—' ? lastLatency : '—');
+    setTelVal('telMinRtt', minLatency, 'green');
+    
+    const maxLatency = data.maxRttMs !== undefined && data.maxRttMs !== null 
+        ? data.maxRttMs 
+        : (lastLatency !== '—' ? lastLatency : '—');
+    setTelVal('telMaxRtt', maxLatency, 'amber');
+    
+    const sent = data.totalEchoesSent !== undefined ? data.totalEchoesSent : (data.echosSent ?? 0);
+    const ok = data.successfulEchoes !== undefined ? data.successfulEchoes : (data.echosOk ?? 0);
+    const failed = data.failedEchoes !== undefined ? data.failedEchoes : (data.echosFailed ?? 0);
+    
+    setTelVal('telEchosSent', sent, 'blue');
+    setTelVal('telEchosOk', ok, 'green');
+    setTelVal('telEchosFailed', failed, 'red');
+    
+    const rate = sent > 0 ? ((ok / sent) * 100).toFixed(1) : (sent === 0 ? '100.0' : '—');
     setTelVal('telSuccessRate', rate, 'green');
-    document.getElementById('telemetryRaw').textContent = JSON.stringify(data, null, 2);
+    
+    const rawEl = document.getElementById('telemetryRaw');
+    if (rawEl) rawEl.textContent = JSON.stringify(data, null, 2);
 }
 
 function setTelVal(id, val, cls) {
@@ -2256,15 +2301,21 @@ async function triggerEcho() {
     try {
         const res = await fetch(API + '/api/iso/echo/trigger', { method: 'POST' });
         const data = await res.json();
-        const ok = data.responseCode === '00';
-        el.innerHTML = `<div class="alert ${ok ? 'alert-success' : 'alert-error'}">${ok ? '✅' : '❌'} Echo ${ok ? 'successful' : 'failed'} — RTT: <strong>${data.roundTripMs ?? '—'} ms</strong> — RC: ${data.responseCode || '—'}</div>`;
-        document.getElementById('lastEchoDetails').innerHTML = `
-            <div class="row"><span class="key">STAN</span><span class="val">${data.stan || '—'}</span></div>
-            <div class="row"><span class="key">Sent MTI</span><span class="val">0800</span></div>
-            <div class="row"><span class="key">Response MTI</span><span class="val">0810</span></div>
-            <div class="row"><span class="key">Response Code</span><span class="val">${data.responseCode || '—'}</span></div>
-            <div class="row"><span class="key">Roundtrip (ms)</span><span class="val">${data.roundTripMs ?? '—'}</span></div>
-            <div class="row"><span class="key">Status</span><span class="val ${ok ? 'result-ok' : 'result-fail'}">${ok ? '✅ OK' : '❌ FAILED'}</span></div>`;
+        const ok = data.responseCode === '00' || data.success === true;
+        const latency = data.roundtripMs !== undefined ? data.roundtripMs : (data.roundTripMs ?? 0);
+        el.innerHTML = `<div class="alert ${ok ? 'alert-success' : 'alert-error'}">${ok ? '✅' : '❌'} Echo ${ok ? 'successful' : 'failed'} — RTT: <strong>${latency} ms</strong> — RC: ${data.responseCode || '00'}</div>`;
+        
+        const detailsEl = document.getElementById('lastEchoDetails');
+        if (detailsEl) {
+            detailsEl.classList.remove('empty');
+            detailsEl.innerHTML = `
+                <div class="row" style="display:flex; justify-content:space-between; margin-bottom:0.35rem; font-size:0.8rem;"><span class="key" style="color:var(--text-muted)">STAN</span><span class="val" style="font-family:'Fira Code',monospace; color:var(--accent-cyan)">${data.stan || '—'}</span></div>
+                <div class="row" style="display:flex; justify-content:space-between; margin-bottom:0.35rem; font-size:0.8rem;"><span class="key" style="color:var(--text-muted)">Sent MTI</span><span class="val" style="font-family:'Fira Code',monospace; color:var(--accent-cyan)">0800</span></div>
+                <div class="row" style="display:flex; justify-content:space-between; margin-bottom:0.35rem; font-size:0.8rem;"><span class="key" style="color:var(--text-muted)">Response MTI</span><span class="val" style="font-family:'Fira Code',monospace; color:var(--accent-cyan)">${data.responseMti || '0810'}</span></div>
+                <div class="row" style="display:flex; justify-content:space-between; margin-bottom:0.35rem; font-size:0.8rem;"><span class="key" style="color:var(--text-muted)">Response Code</span><span class="val" style="font-family:'Fira Code',monospace; color:var(--accent-cyan)">${data.responseCode || '00'}</span></div>
+                <div class="row" style="display:flex; justify-content:space-between; margin-bottom:0.35rem; font-size:0.8rem;"><span class="key" style="color:var(--text-muted)">Roundtrip (ms)</span><span class="val" style="font-family:'Fira Code',monospace; color:var(--accent-cyan)">${latency} ms</span></div>
+                <div class="row" style="display:flex; justify-content:space-between; font-size:0.8rem;"><span class="key" style="color:var(--text-muted)">Status</span><span class="val ${ok ? 'result-ok' : 'result-fail'}">${ok ? '✅ OK' : '❌ FAILED'}</span></div>`;
+        }
         loadTelemetry();
     } catch (e) { el.innerHTML = `<div class="alert alert-error">❌ ${e.message}</div>`; }
 }
