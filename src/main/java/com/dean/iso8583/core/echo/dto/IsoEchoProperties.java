@@ -1,6 +1,9 @@
 package com.dean.iso8583.core.echo.dto;
 
+import com.dean.iso8583.core.clearing.utils.ClearingUtils;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+
+import static com.dean.iso8583.core.clearing.utils.ClearingUtils.TPDU;
 
 /**
  * Developer Note:
@@ -31,7 +34,7 @@ public record IsoEchoProperties(
             timeoutMs = 5000;
         }
         if (tpduHeader == null || tpduHeader.isBlank()) {
-            tpduHeader = "6000000000";
+            tpduHeader = TPDU;
         }
     }
 }

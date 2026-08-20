@@ -46,11 +46,6 @@ public enum NetworkManagementCode {
     private final String code;
     private final String description;
 
-//    NetworkManagementCode(String code, String description) {
-//        this.code = code;
-//        this.description = description;
-//    }
-
     /**
      * Resolves a DE 70 code string to its {@link NetworkManagementCode} enum constant.
      *

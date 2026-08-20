@@ -36,6 +36,7 @@ public class TransactionStore {
 
     private static final long LOCK_WAIT_MS = 3000;
     private static final long LOCK_LEASE_MS = 5000;
+    private static final String AGGREGATE_TYPE_TRANSACTION = "TRANSACTION";
 
     /**
      * Records a successfully authorised transaction from a {@code 0200} request
@@ -104,7 +105,7 @@ public class TransactionStore {
                         ? IsoEventType.TRANSACTION_REVERSED
                         : IsoEventType.TRANSACTION_AUTHORISED;
 
-                eventPublisher.publish("TRANSACTION", record.stan(), eventType, record);
+                eventPublisher.publish(AGGREGATE_TYPE_TRANSACTION, record.stan(), eventType, record);
             });
 
             return updated;

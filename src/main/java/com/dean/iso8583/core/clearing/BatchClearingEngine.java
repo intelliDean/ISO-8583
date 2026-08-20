@@ -2,6 +2,10 @@ package com.dean.iso8583.core.clearing;
 
 import com.dean.iso8583.core.IsoPacker;
 import com.dean.iso8583.core.IsoUnpacker;
+//import com.dean.iso8583.core.clearing.dto.*;
+import com.dean.iso8583.core.clearing.dto.*;
+import com.dean.iso8583.core.clearing.enums.ClearingRecordType;
+import com.dean.iso8583.core.clearing.utils.InterchangeFeeCalculator;
 import com.dean.iso8583.core.dto.IsoMessage;
 import com.dean.iso8583.core.event.IsoEventPublisher;
 import com.dean.iso8583.core.event.IsoEventType;
@@ -13,12 +17,14 @@ import com.dean.iso8583.core.reversal.TransactionStore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static com.dean.iso8583.core.clearing.utils.ClearingUtils.*;
 
 /**
  * Enterprise Dual-Message System (DMS) Batch Clearing &amp; Settlement Engine
@@ -38,13 +44,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 @RequiredArgsConstructor
 public class BatchClearingEngine {
 
-    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
     private final TransactionStore transactionStore;
     private final ClearingBatchRepository clearingRepository;
     private final DistributedLockService lockService;
     private final IsoEventPublisher eventPublisher;
 
     private final AtomicInteger batchSequence = new AtomicInteger(1);
+
 
     /**
      * Generates an end-of-day clearing batch from all eligible {@code AUTHORISED} transactions
@@ -54,118 +60,202 @@ public class BatchClearingEngine {
      * @return constructed {@link ClearingBatch} with control totals and raw batch file text
      */
     public ClearingBatch generateClearingBatch(String networkId) {
-        String lockKey = "lock:clearing:batch:" + (networkId != null ? networkId : "DEFAULT");
 
-        return lockService.executeWithLock(lockKey, 5000, 10000, () -> {
-            String batchId = "BATCH-" + LocalDate.now().format(DATE_FORMATTER) + "-" + String.format("%04d", batchSequence.getAndIncrement());
-            String settlementDate = LocalDate.now().format(DATE_FORMATTER);
+        final String lockKey = buildLockKey(resolveNetworkId(networkId));
 
-            Collection<TransactionRecord> storedTxns = transactionStore.findAll();
-            List<ClearingRecord> records = new ArrayList<>();
-
-            long totalGrossCents = 0;
-            long totalInterchangeCents = 0;
-            int presentmentCount = 0;
-
-            StringBuilder fileBuilder = new StringBuilder();
-
-            // 1. File Header (1644)
-            String headerMti = ClearingRecordType.FILE_HEADER.getMti();
-            fileBuilder.append(String.format("HDR:%s:%s:%s\n", headerMti, batchId, settlementDate));
-
-            // 2. Generate 1240 First Presentments from Authorised records
-            for (TransactionRecord txn : storedTxns) {
-                if (txn.state() == TransactionState.AUTHORISED && txn.authorisedAmount() != null) {
-                    String amountIso = txn.authorisedAmount();
-                    String interchangeFeeIso = InterchangeFeeCalculator.calculateFee(amountIso);
-
-                    long amtCents = Long.parseLong(amountIso);
-                    long feeCents = Long.parseLong(interchangeFeeIso);
-                    long netSettlementCents = Math.max(0, amtCents - feeCents);
-                    String netSettlementIso = String.format("%012d", netSettlementCents);
-
-                    // Build 1240 IsoMessage
-                    IsoMessage msg1240 = build1240Message(txn, interchangeFeeIso, netSettlementIso);
-                    String rawPacked = IsoPacker.packToString(msg1240);
-
-                    ClearingRecord rec = ClearingRecord.fromAuthorisation(
-                            "REC-" + txn.stan(),
-                            txn.maskedPan(),
-                            amountIso,
-                            interchangeFeeIso,
-                            netSettlementIso,
-                            txn.currencyCode() != null ? txn.currencyCode() : "840",
-                            txn.rrn(),
-                            txn.authCode(),
-                            txn.stan(),
-                            txn.terminalId(),
-                            txn.merchantId(),
-                            rawPacked
-                    );
-
-                    records.add(rec);
-                    fileBuilder.append(rawPacked).append("\n");
-
-                    totalGrossCents += amtCents;
-                    totalInterchangeCents += feeCents;
-                    presentmentCount++;
-                }
-            }
-
-            // 3. Include any pending 1440 Chargebacks
-            int chargebackCount = 0;
-            for (ClearingRecord cb : clearingRepository.findAllChargebacks()) {
-                records.add(cb);
-                if (cb.rawPackedIso() != null) {
-                    fileBuilder.append(cb.rawPackedIso()).append("\n");
-                }
-                chargebackCount++;
-            }
-
-            // 4. File Trailer (1644 Reconciliation)
-            long netSettlementTotalCents = Math.max(0, totalGrossCents - totalInterchangeCents);
-            String grossIso = String.format("%012d", totalGrossCents);
-            String feeIso = String.format("%012d", totalInterchangeCents);
-            String netIso = String.format("%012d", netSettlementTotalCents);
-
-            String trailerLine = String.format("TRL:%s:COUNT=%d:GROSS=%s:FEE=%s:NET=%s",
-                    ClearingRecordType.FILE_TRAILER.getMti(), records.size(), grossIso, feeIso, netIso);
-            fileBuilder.append(trailerLine);
-
-            ClearingBatch batch = new ClearingBatch(
-                    batchId,
-                    settlementDate,
-                    networkId != null ? networkId : "MASTERCARD-IPM",
-                    records.size(),
-                    presentmentCount,
-                    chargebackCount,
-                    grossIso,
-                    feeIso,
-                    netIso,
-                    records,
-                    fileBuilder.toString(),
-                    Instant.now()
-            );
-
-            clearingRepository.saveBatch(batch);
-            log.info("Generated Clearing Batch {} — {} presentments, gross=${}, interchange=${}, net=${}",
-                    batchId, presentmentCount, formatCents(totalGrossCents), formatCents(totalInterchangeCents), formatCents(netSettlementTotalCents));
-
-            // Emit domain event for Kafka Outbox streaming
-            eventPublisher.publish("CLEARING_BATCH", batchId, IsoEventType.CLEARING_BATCH_GENERATED, batch);
-
-            return batch;
-        });
+        return lockService.executeWithLock(
+                lockKey,
+                LOCK_WAIT_MILLIS,
+                LOCK_LEASE_MILLIS,
+                () -> buildAndPersistBatch(networkId)
+        );
     }
+
+    private ClearingBatch buildAndPersistBatch(String networkId) {
+        String batchId = nextBatchId();
+        String settlementDate = LocalDate.now().format(DATE_FORMATTER);
+
+        List<ClearingRecord> records = new ArrayList<>();
+        StringBuilder fileBuilder = new StringBuilder();
+
+        appendFileHeader(fileBuilder, batchId, settlementDate);
+
+        PresentmentResult presentments = appendPresentments(fileBuilder, records);
+        int chargebackCount = appendChargebacks(fileBuilder, records);
+
+        ControlTotals totals = ControlTotals.of(
+                presentments.grossCents(),
+                presentments.interchangeCents(),
+                records.size()
+        );
+
+        appendFileTrailer(fileBuilder, totals);
+
+        ClearingBatch batch = ClearingBatch.builder()
+                .batchId(batchId)
+                .settlementDate(settlementDate)
+                .networkId(resolveNetworkId(networkId))
+                .totalTransactions(records.size())
+                .presentmentCount(records.size())
+                .chargebackCount(chargebackCount)
+                .totalGrossAmountIso(totals.grossIso())
+                .totalInterchangeFeeIso(totals.feeIso())
+                .netSettlementAmountIso(totals.netIso())
+                .records(records)
+                .rawBatchFile(fileBuilder.toString())
+                .generatedAt(Instant.now())
+                .build();
+
+        persistAndPublish(batch, presentments, totals);
+        return batch;
+    }
+
+    private String resolveNetworkId(String networkId) {
+        return StringUtils.hasText(networkId)
+                ? networkId.trim()
+                : DEFAULT_NETWORK_ID;
+    }
+
+    private String buildLockKey(String networkId) {
+        String lockNetworkId = StringUtils.hasText(networkId)
+                ? networkId
+                : DEFAULT_LOCK_NETWORK;
+
+        return "lock:clearing:batch:%s".formatted(lockNetworkId);
+    }
+
+    private String nextBatchId() {
+        return "BATCH-%s-%04d".formatted(
+                LocalDate.now().format(DATE_FORMATTER),
+                batchSequence.getAndIncrement()
+        );
+    }
+
+    private void appendFileHeader(StringBuilder fileBuilder, String batchId, String settlementDate) {
+        String headerMti = ClearingRecordType.FILE_HEADER.getMti();
+
+        fileBuilder.append("HDR:")
+                .append(headerMti).append(':')
+                .append(batchId).append(':')
+                .append(settlementDate).append('\n');
+    }
+
+    /**
+     * Builds 1240 First Presentment records from all eligible AUTHORISED transactions,
+     * appending each packed message to the file and accumulating control totals.
+     */
+    private PresentmentResult appendPresentments(StringBuilder fileBuilder, List<ClearingRecord> records) {
+        long grossCents = 0;
+        long interchangeCents = 0;
+        int count = 0;
+
+        for (TransactionRecord txn : transactionStore.findAll()) {
+
+            if (!isEligibleForPresentment(txn)) continue;
+
+            PresentmentEntry entry = buildPresentmentEntry(txn);
+            records.add(entry.record());
+            fileBuilder.append(entry.rawPacked())
+                    .append("\n");
+
+            grossCents += entry.amountCents();
+            interchangeCents += entry.feeCents();
+            count++;
+        }
+
+        return PresentmentResult.builder()
+                .grossCents(grossCents)
+                .interchangeCents(interchangeCents)
+                .count(count)
+                .build();
+    }
+
+    private boolean isEligibleForPresentment(TransactionRecord txn) {
+        return txn != null
+                && txn.state() == TransactionState.AUTHORISED
+                && txn.authorisedAmount() != null;
+    }
+
+    private PresentmentEntry buildPresentmentEntry(TransactionRecord txn) {
+        String amountIso = txn.authorisedAmount();
+        String interchangeFeeIso = InterchangeFeeCalculator.calculateFee(amountIso);
+
+        long amtCents = Long.parseLong(amountIso);
+        long feeCents = Long.parseLong(interchangeFeeIso);
+        long netSettlementCents = Math.max(0, amtCents - feeCents);
+        String netSettlementIso = "%012d".formatted(netSettlementCents);
+
+        IsoMessage msg1240 = build1240Message(txn, interchangeFeeIso);
+        String rawPacked = IsoPacker.packToString(msg1240);
+
+        ClearingRecord record = ClearingRecord.fromAuthorisation(
+                "REC-%s".formatted(txn.stan()),
+                txn.maskedPan(),
+                amountIso,
+                interchangeFeeIso,
+                netSettlementIso,
+                txn.currencyCode() != null ? txn.currencyCode() : CURRENCY_CODE_DEFAULT,
+                txn.rrn(),
+                txn.authCode(),
+                txn.stan(),
+                txn.terminalId(),
+                txn.merchantId(),
+                rawPacked
+        );
+
+        return new PresentmentEntry(record, rawPacked, amtCents, feeCents);
+    }
+
+    /**
+     * Appends any pending 1440 Chargebacks to the file and record list.
+     *
+     * @return number of chargebacks included
+     */
+    private int appendChargebacks(StringBuilder fileBuilder, List<ClearingRecord> records) {
+        int chargebackCount = 0;
+        for (ClearingRecord cb : clearingRepository.findAllChargebacks()) {
+            records.add(cb);
+            if (cb.rawPackedIso() != null) {
+                fileBuilder.append(cb.rawPackedIso()).append("\n");
+            }
+            chargebackCount++;
+        }
+        return chargebackCount;
+    }
+
+    private void appendFileTrailer(StringBuilder fileBuilder, ControlTotals totals) {
+        String trailerLine = "TRL:%s:COUNT=%d:GROSS=%s:FEE=%s:NET=%s".formatted(
+                ClearingRecordType.FILE_TRAILER.getMti(),
+                totals.recordCount(),
+                totals.grossIso(),
+                totals.feeIso(),
+                totals.netIso()
+        );
+
+        fileBuilder.append(trailerLine);
+    }
+
+    private void persistAndPublish(ClearingBatch batch, PresentmentResult presentments, ControlTotals totals) {
+        clearingRepository.saveBatch(batch);
+        log.info("Generated Clearing Batch {} — {} presentments, gross=${}, interchange=${}, net=${}",
+                batch.batchId(), presentments.count(),
+                formatCents(totals.grossCents()),
+                formatCents(totals.interchangeCents()),
+                formatCents(totals.netCents())
+        );
+
+        eventPublisher.publish(AGGREGATE_TYPE_CLEARING_BATCH, batch.batchId(), IsoEventType.CLEARING_BATCH_GENERATED, batch);
+    }
+
 
     /**
      * Files a 1440 Chargeback dispute against a previously authorized/settled transaction
      * under distributed locking and repository persistence.
      *
-     * @param stan               original transaction STAN
-     * @param maskedPan          masked cardholder PAN
-     * @param amountIso          disputed amount
-     * @param disputeReasonCode  scheme reason code (e.g. "4837" Fraud, "4853" Defective Merchandise)
+     * @param stan              original transaction STAN
+     * @param maskedPan         masked cardholder PAN
+     * @param amountIso         disputed amount
+     * @param disputeReasonCode scheme reason code (e.g. "4837" Fraud, "4853" Defective Merchandise)
      * @return created {@link ClearingRecord}
      */
     public ClearingRecord fileChargeback(
@@ -174,131 +264,216 @@ public class BatchClearingEngine {
             String amountIso,
             String disputeReasonCode
     ) {
-        String lockKey = "lock:chargeback:stan:" + stan;
 
-        return lockService.executeWithLock(lockKey, 3000, 5000, () -> {
-            String recordId = "CB-" + stan + "-" + System.currentTimeMillis();
-
-            IsoMessage msg1440 = new IsoMessage("1440");
-            msg1440.setHeader("6000000000");
-            msg1440.setField(2, maskedPan);
-            msg1440.setField(3, "000000");
-            msg1440.setField(4, amountIso);
-            msg1440.setField(11, stan);
-            msg1440.setField(25, disputeReasonCode != null ? disputeReasonCode : "4837");
-
-            String rawPacked = IsoPacker.packToString(msg1440);
-
-            ClearingRecord record = ClearingRecord.createChargeback(
-                    recordId,
-                    maskedPan,
-                    amountIso,
-                    "840",
-                    "123456789012",
-                    "AUTH01",
-                    stan,
-                    disputeReasonCode != null ? disputeReasonCode : "4837",
-                    rawPacked
-            );
-
-            clearingRepository.saveChargeback(record);
-            log.warn("Chargeback filed: ID={} STAN={} PAN={} Amount={} Reason={}",
-                    recordId, stan, maskedPan, amountIso, disputeReasonCode);
-
-            // Emit domain event for Kafka Outbox streaming
-            eventPublisher.publish("CHARGEBACK", recordId, IsoEventType.CHARGEBACK_FILED, record);
-
-            return record;
-        });
+        String lockKey = "lock:chargeback:stan:%s".formatted(stan);
+        return lockService.executeWithLock(
+                lockKey,
+                WAIT_TIMEOUT,
+                LOCK_WAIT_MILLIS,
+                () -> buildAndPersistChargeback(stan, maskedPan, amountIso, disputeReasonCode)
+        );
     }
+
+    private ClearingRecord buildAndPersistChargeback(
+            String stan,
+            String maskedPan,
+            String amountIso,
+            String disputeReasonCode
+    ) {
+        String recordId = nextChargebackRecordId(stan);
+        String reasonCode = resolveDisputeReasonCode(disputeReasonCode);
+
+        String rawPacked = pack1440Message(stan, maskedPan, amountIso, reasonCode);
+        ClearingRecord record = buildChargebackRecord(recordId, stan, maskedPan, amountIso, reasonCode, rawPacked);
+
+        persistAndPublishChargeback(record, stan, maskedPan, amountIso, disputeReasonCode);
+        return record;
+    }
+
+    private String nextChargebackRecordId(String stan) {
+        return "CB-%s-%s".formatted(stan, System.currentTimeMillis());
+    }
+
+    private String resolveDisputeReasonCode(String disputeReasonCode) {
+        return disputeReasonCode != null
+                ? disputeReasonCode
+                : DEFAULT_DISPUTE_CODE;
+    }
+
+    private String pack1440Message(String stan, String maskedPan, String amountIso, String reasonCode) {
+        IsoMessage msg1440 = new IsoMessage(MTI_I44O);
+
+        msg1440.setHeader(TPDU);
+        msg1440.setField(2, maskedPan);
+        msg1440.setField(3, DEFAULT_PROCESSING_CODE);
+        msg1440.setField(4, amountIso);
+        msg1440.setField(11, stan);
+        msg1440.setField(25, reasonCode);
+        return IsoPacker.packToString(msg1440);
+    }
+
+    private ClearingRecord buildChargebackRecord(
+            String recordId,
+            String stan,
+            String maskedPan,
+            String amountIso,
+            String reasonCode,
+            String rawPacked
+    ) {
+        return ClearingRecord.createChargeback(
+                recordId,
+                maskedPan,
+                amountIso,
+                CURRENCY_CODE_DEFAULT,
+                RRN,
+                AUTH_CODE,
+                stan,
+                reasonCode,
+                rawPacked
+        );
+    }
+
+    private void persistAndPublishChargeback(
+            ClearingRecord record,
+            String stan,
+            String maskedPan,
+            String amountIso,
+            String disputeReasonCode
+    ) {
+        clearingRepository.saveChargeback(record);
+        log.warn("Chargeback filed: ID={} STAN={} PAN={} Amount={} Reason={}",
+                record.recordId(), stan, maskedPan, amountIso, disputeReasonCode);
+
+        // Emit domain event for Kafka Outbox streaming
+        eventPublisher.publish(AGGREGATE_TYPE_CHARGEBACK, record.recordId(), IsoEventType.CHARGEBACK_FILED, record);
+    }
+
 
     /**
      * Parses an incoming raw batch clearing file string into structured records.
      */
     public ClearingBatch parseClearingFile(String rawBatchFile) {
+        validateRawBatchFile(rawBatchFile);
+
+        List<ClearingRecord> records = new ArrayList<>();
+        LineParseTotals totals = new LineParseTotals();
+
+        for (String rawLine : splitLines(rawBatchFile)) {
+            String line = rawLine.trim();
+
+            if (isSkippableLine(line)) continue;
+
+            parseLine(line, records.size()).ifPresent(rec -> {
+                records.add(rec);
+                totals.accumulate(rec.recordType(), extractAmountCents(rec.amountIso()));
+            });
+        }
+
+        return buildImportedBatch(rawBatchFile, records, totals);
+    }
+
+    private void validateRawBatchFile(String rawBatchFile) {
         if (rawBatchFile == null || rawBatchFile.isBlank()) {
             throw new IllegalArgumentException("Clearing batch file cannot be empty");
         }
+    }
 
-        String[] lines = rawBatchFile.split("\\r?\\n");
-        List<ClearingRecord> records = new ArrayList<>();
-        String batchId = "IMPORTED-" + System.currentTimeMillis();
+    private String[] splitLines(String rawBatchFile) {
+        return rawBatchFile.split("\\r?\\n");
+    }
+
+    private boolean isSkippableLine(String line) {
+        return line.isEmpty() || line.startsWith("HDR:") || line.startsWith("TRL:");
+    }
+
+    /**
+     * Attempts to unpack a single ISO8583 line into a {@link ClearingRecord}.
+     * Returns empty if the line could not be parsed, logging a warning.
+     */
+    private Optional<ClearingRecord> parseLine(String line, int currentRecordCount) {
+        try {
+            IsoMessage msg = unpackLine(line);
+            return Optional.of(toClearingRecord(msg, line, currentRecordCount));
+        } catch (Exception e) {
+            log.warn("Could not unpack clearing line: {} - {}", line, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private IsoMessage unpackLine(String line) {
+        boolean hasHeader = line.length() >= 14 && line.startsWith(TPDU);
+        return IsoUnpacker.unpack(line, hasHeader);
+    }
+
+    private ClearingRecord toClearingRecord(IsoMessage msg, String rawLine, int currentRecordCount) {
+        String amt = msg.getField(4);
+        ClearingRecordType type = resolveRecordType(msg.getMti());
+
+        return ClearingRecord.builder()
+                .recordId("IMP-%d".formatted(currentRecordCount + 1))
+                .recordType(type)
+                .maskedPan(msg.getField(2))
+                .processingCode(msg.getField(3))
+                .amountIso(amt)
+                .interchangeFeeIso("000000000000")
+                .settlementAmountIso(amt)
+                .currencyCode(msg.getField(49) != null ? msg.getField(49) : CURRENCY_CODE_DEFAULT)
+                .rrn(msg.getField(37))
+                .authCode(msg.getField(38))
+                .stan(msg.getField(11))
+                .terminalId(msg.getField(41))
+                .merchantId(msg.getField(42))
+                .disputeReasonCode(msg.getField(25))
+                .rawPackedIso(rawLine)
+                .timestamp(Instant.now())
+                .build();
+    }
+
+    private ClearingRecordType resolveRecordType(String mti) {
+        return mti.equals(MTI_I44O)
+                ? ClearingRecordType.CHARGEBACK
+                : ClearingRecordType.FIRST_PRESENTMENT;
+    }
+
+    private long extractAmountCents(String amountIso) {
+        if (amountIso == null) return 0;
+
+        try {
+            return Long.parseLong(amountIso);
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    private ClearingBatch buildImportedBatch(
+            String rawBatchFile,
+            List<ClearingRecord> records,
+            LineParseTotals totals
+    ) {
+        String batchId = "%s-%s".formatted(NETWORK_ID_IMPORTED, System.currentTimeMillis());
         String settlementDate = LocalDate.now().format(DATE_FORMATTER);
 
-        long grossCents = 0;
-        int presentmentCount = 0;
-        int chargebackCount = 0;
-
-        for (String line : lines) {
-            line = line.trim();
-            if (line.isEmpty() || line.startsWith("HDR:") || line.startsWith("TRL:")) {
-                continue;
-            }
-
-            try {
-                boolean hasHeader = line.length() >= 14 && line.startsWith("6000000000");
-                IsoMessage msg = IsoUnpacker.unpack(line, hasHeader);
-
-                String mti = msg.getMti();
-                String pan = msg.getField(2);
-                String amt = msg.getField(4);
-                String stan = msg.getField(11);
-                String rrn = msg.getField(37);
-                String auth = msg.getField(38);
-
-                ClearingRecordType type = "1440".equals(mti) ? ClearingRecordType.CHARGEBACK : ClearingRecordType.FIRST_PRESENTMENT;
-
-                if (type == ClearingRecordType.CHARGEBACK) chargebackCount++;
-                else presentmentCount++;
-
-                if (amt != null) {
-                    try { grossCents += Long.parseLong(amt); } catch (Exception ignored) {}
-                }
-
-                ClearingRecord rec = new ClearingRecord(
-                        "IMP-" + (records.size() + 1),
-                        type,
-                        pan,
-                        msg.getField(3),
-                        amt,
-                        "000000000000",
-                        amt,
-                        msg.getField(49) != null ? msg.getField(49) : "840",
-                        rrn,
-                        auth,
-                        stan,
-                        msg.getField(41),
-                        msg.getField(42),
-                        msg.getField(25),
-                        line,
-                        Instant.now()
-                );
-                records.add(rec);
-            } catch (Exception e) {
-                log.warn("Could not unpack clearing line: {} - {}", line, e.getMessage());
-            }
-        }
-
-        String grossIso = String.format("%012d", grossCents);
+        String grossIso = "%012d".formatted(totals.getGrossCents());
         String feeIso = InterchangeFeeCalculator.calculateFee(grossIso);
-        long netCents = Math.max(0, grossCents - Long.parseLong(feeIso));
-        String netIso = String.format("%012d", netCents);
+        long netCents = Math.max(0, totals.getGrossCents() - Long.parseLong(feeIso));
+        String netIso = "%012d".formatted(netCents);
 
-        return new ClearingBatch(
-                batchId,
-                settlementDate,
-                "IMPORTED",
-                records.size(),
-                presentmentCount,
-                chargebackCount,
-                grossIso,
-                feeIso,
-                netIso,
-                records,
-                rawBatchFile,
-                Instant.now()
-        );
+        return ClearingBatch.builder()
+                .batchId(batchId)
+                .settlementDate(settlementDate)
+                .networkId(NETWORK_ID_IMPORTED)
+                .totalTransactions(records.size())
+                .presentmentCount(totals.getPresentmentCount())
+                .chargebackCount(totals.getChargebackCount())
+                .totalGrossAmountIso(grossIso)
+                .totalInterchangeFeeIso(feeIso)
+                .netSettlementAmountIso(netIso)
+                .records(records)
+                .rawBatchFile(rawBatchFile)
+                .generatedAt(Instant.now())
+                .build();
     }
+
 
     /**
      * Retrieves all archived clearing batches.
@@ -314,24 +489,31 @@ public class BatchClearingEngine {
         return clearingRepository.findAllChargebacks();
     }
 
-    private IsoMessage build1240Message(TransactionRecord txn, String interchangeFeeIso, String netSettlementIso) {
-        IsoMessage msg = new IsoMessage("1240");
-        msg.setHeader("6000000000");
+    private IsoMessage build1240Message(TransactionRecord txn, String interchangeFeeIso) {
+
+        IsoMessage msg = new IsoMessage(MTI_I240);
+        msg.setHeader(TPDU);
         msg.setField(2, txn.maskedPan());
-        msg.setField(3, txn.processingCode() != null ? txn.processingCode() : "000000");
+        msg.setField(3, txn.processingCode() != null ? txn.processingCode() : DEFAULT_PROCESSING_CODE);
         msg.setField(4, txn.authorisedAmount());
+
         if (txn.transmissionTime() != null) msg.setField(7, txn.transmissionTime());
+
         msg.setField(11, txn.stan());
         msg.setField(28, interchangeFeeIso);
+
         if (txn.rrn() != null) msg.setField(37, txn.rrn());
         if (txn.authCode() != null) msg.setField(38, txn.authCode());
         if (txn.terminalId() != null) msg.setField(41, txn.terminalId());
         if (txn.merchantId() != null) msg.setField(42, txn.merchantId());
-        msg.setField(49, txn.currencyCode() != null ? txn.currencyCode() : "840");
+
+        msg.setField(49, txn.currencyCode() != null ? txn.currencyCode() : CURRENCY_CODE_DEFAULT);
         return msg;
     }
 
     private String formatCents(long cents) {
-        return String.format("%.2f", cents / 100.0);
+        return "%.2f".formatted(cents / 100.0);
     }
+
+
 }

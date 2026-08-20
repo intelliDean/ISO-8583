@@ -4,8 +4,8 @@ import com.dean.iso8583.core.IsoPacker;
 import com.dean.iso8583.core.IsoSpec;
 import com.dean.iso8583.core.IsoUnpacker;
 import com.dean.iso8583.core.clearing.BatchClearingEngine;
-import com.dean.iso8583.core.clearing.ClearingBatch;
-import com.dean.iso8583.core.clearing.ClearingRecord;
+import com.dean.iso8583.core.clearing.dto.ClearingBatch;
+import com.dean.iso8583.core.clearing.dto.ClearingRecord;
 import com.dean.iso8583.core.crypto.CryptoKeyRegistry;
 import com.dean.iso8583.core.crypto.CryptoUtils;
 import com.dean.iso8583.core.crypto.IsoPinBlockEngine;
@@ -72,11 +72,7 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     public UnpackResult unpackMessage(UnpackRequest request) {
         IsoSpecDefinition spec = isoSpecRegistry.getSpec(request.specId());
 
-        IsoMessage message = IsoUnpacker.unpack(
-                request.payload(),
-                request.hasHeader(),
-                spec
-        );
+        IsoMessage message = IsoUnpacker.unpack(request.payload(), request.hasHeader(), spec);
 
         return buildUnpackResult(message, spec);
     }

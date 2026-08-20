@@ -31,7 +31,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ReversalEngineTest {
 
     private TransactionStore transactionStore;
-    private ReversalEngine reversalEngine;
     private IsoMessageProcessor messageProcessor;
 
     @BeforeEach
@@ -42,7 +41,7 @@ class ReversalEngineTest {
         var eventPublisher = new IsoEventPublisher(outboxRepo, new ObjectMapper());
 
         transactionStore = new TransactionStore(txnRepo, lockService, eventPublisher);
-        reversalEngine = new ReversalEngine(transactionStore);
+        ReversalEngine reversalEngine = new ReversalEngine(transactionStore);
         messageProcessor = new IsoMessageProcessor(reversalEngine);
     }
 

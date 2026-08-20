@@ -36,9 +36,8 @@ public class OutboxPollerService {
     @Scheduled(fixedDelay = 1000)
     public void pollAndDispatch() {
         List<IsoOutboxEvent> pending = outboxRepository.findPendingEvents(50);
-        if (pending.isEmpty()) {
-            return;
-        }
+
+        if (pending.isEmpty()) return;
 
         log.debug("Found {} pending outbox event(s) for streaming dispatch", pending.size());
 
@@ -49,8 +48,8 @@ public class OutboxPollerService {
                 outboxRepository.update(event.markPublished());
                 totalDispatched.incrementAndGet();
             } catch (Exception e) {
-                log.error("Failed to dispatch outbox event: ID={} Retries={}",
-                        event.eventId(), event.retryCount(), e);
+
+                log.error("Failed to dispatch outbox event: ID={} Retries={}", event.eventId(), event.retryCount(), e);
                 outboxRepository.update(event.markFailed());
             }
         }

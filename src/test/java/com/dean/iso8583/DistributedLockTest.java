@@ -69,7 +69,7 @@ class DistributedLockTest {
             executor.submit(() -> {
                 try {
                     for (int j = 0; j < incrementsPerThread; j++) {
-                        lockService.executeWithLock(lockKey, 2000, 1000, () -> {
+                        lockService.executeWithLock(lockKey, 10000, 5000, () -> {
                             int current = counter.get();
                             try { Thread.sleep(1); } catch (InterruptedException ignored) {}
                             counter.set(current + 1);

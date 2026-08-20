@@ -1,5 +1,6 @@
-package com.dean.iso8583.core.clearing;
+package com.dean.iso8583.core.clearing.dto;
 
+import com.dean.iso8583.core.clearing.enums.ClearingRecordType;
 import lombok.Builder;
 
 import java.time.Instant;

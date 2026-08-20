@@ -1,4 +1,4 @@
-package com.dean.iso8583.core.clearing.dto.enums;
+package com.dean.iso8583.core.clearing.enums;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

@@ -23,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
  *   <li><b>MAC Key (MAK)</b>: Used for ISO 9797 message authentication code generation.</li>
  * </ul>
  */
+
 @Slf4j
 public final class DukptEngine {
 
@@ -33,6 +34,11 @@ public final class DukptEngine {
 
     private static final byte[] BDK_MASK = CryptoUtils.hexToBytes("C0C0C0C000000000C0C0C0C000000000");
     private static final byte[] KEY_REGISTER_MASK = CryptoUtils.hexToBytes("C0C0C0C000000000C0C0C0C000000000");
+
+    private static final int BDK_LENGTH = 16;
+    private static final int KSN_LENGTH = 10;
+    private static final int HALF_KEY_LENGTH = 8;
+    private static final long COUNTER_MSB_MASK = 0x100000L; // 21st bit (MSB of counter)
 
     private DukptEngine() {
         // Utility class
@@ -45,18 +51,11 @@ public final class DukptEngine {
      * @param ksn 10-byte (20-hex) Key Serial Number
      * @return 16-byte IPEK
      */
-    public static byte[] deriveIpek(byte[] bdk, byte[] ksn) {
-        if (bdk.length != 16) {
-            throw new IllegalArgumentException("BDK must be 16 bytes (Double-Length Triple-DES key)");
-        }
-        if (ksn.length != 10) {
-            throw new IllegalArgumentException("KSN must be exactly 10 bytes (20 hex characters)");
-        }
+    public static byte[] deriveIPEK(byte[] bdk, byte[] ksn) {
+        validateBdk(bdk);
+        validateKsn(ksn);
 
-        // Mask out the bottom 21 bits (transaction counter) of the 10-byte KSN to get the Base KSN (8 bytes)
-        byte[] baseKsn = new byte[8];
-        System.arraycopy(ksn, 0, baseKsn, 0, 8);
-        baseKsn[7] &= (byte) 0xE0; // zero bottom 21 bits (last 5 bits of byte 7 + bytes 8, 9)
+        byte[] baseKsn = computeBaseKsn(ksn);
 
         // Left half of IPEK = 3DES(baseKsn) under BDK
         byte[] leftIpek = CryptoUtils.desEncryptEcb(baseKsn, bdk);
@@ -65,11 +64,29 @@ public final class DukptEngine {
         byte[] bdkXor = CryptoUtils.xor(bdk, BDK_MASK);
         byte[] rightIpek = CryptoUtils.desEncryptEcb(baseKsn, bdkXor);
 
-        byte[] ipek = new byte[16];
-        System.arraycopy(leftIpek, 0, ipek, 0, 8);
-        System.arraycopy(rightIpek, 0, ipek, 8, 8);
+        return combineHalves(leftIpek, rightIpek);
+    }
 
-        return ipek;
+    private static void validateBdk(byte[] bdk) {
+        if (bdk.length != BDK_LENGTH) {
+            throw new IllegalArgumentException("BDK must be 16 bytes (Double-Length Triple-DES key)");
+        }
+    }
+
+    private static void validateKsn(byte[] ksn) {
+        if (ksn.length != KSN_LENGTH) {
+            throw new IllegalArgumentException("KSN must be exactly 10 bytes (20 hex characters)");
+        }
+    }
+
+    /**
+     * Masks out the bottom 21 bits (transaction counter) of the 10-byte KSN to get the Base KSN (8 bytes).
+     */
+    private static byte[] computeBaseKsn(byte[] ksn) {
+        byte[] baseKsn = new byte[8];
+        System.arraycopy(ksn, 0, baseKsn, 0, 8);
+        baseKsn[7] &= (byte) 0xE0; // zero bottom 21 bits (last 5 bits of byte 7 + bytes 8, 9)
+        return baseKsn;
     }
 
     /**
@@ -80,32 +97,38 @@ public final class DukptEngine {
      * @return 16-byte transaction-specific future key
      */
     public static byte[] deriveTransactionKey(byte[] ipek, byte[] ksn) {
-        // Extract 21-bit transaction counter from the last 3 bytes of KSN
         long counter = extractTransactionCounter(ksn);
-
-        byte[] currentKey = new byte[16];
-        System.arraycopy(ipek, 0, currentKey, 0, 16);
-
-        // 8-byte working counter register
-        byte[] r8 = new byte[8];
-        System.arraycopy(ksn, 2, r8, 0, 6);
-        r8[5] &= (byte) 0xE0;
+        byte[] currentKey = ipek.clone();
+        byte[] r8 = initializeCounterRegister(ksn);
 
         // Propagate non-reversible key generation function for each set bit in counter
-        long mask = 0x100000L; // 21st bit (MSB of counter)
-        while (mask > 0) {
+        for (long mask = COUNTER_MSB_MASK; mask > 0; mask >>= 1) {
             if ((counter & mask) != 0) {
-                // Set the corresponding bit in r8
-                r8[5] |= (byte) ((mask >> 16) & 0x1F);
-                r8[6] = (byte) ((mask >> 8) & 0xFF);
-                r8[7] = (byte) (mask & 0xFF);
-
+                setRegisterBit(r8, mask);
                 currentKey = nonReversibleKeyGeneration(currentKey, r8);
             }
-            mask >>= 1;
         }
 
         return currentKey;
+    }
+
+    /**
+     * Builds the initial 8-byte working counter register from the KSN's transaction-counter bytes.
+     */
+    private static byte[] initializeCounterRegister(byte[] ksn) {
+        byte[] r8 = new byte[8];
+        System.arraycopy(ksn, 2, r8, 0, 6);
+        r8[5] &= (byte) 0xE0;
+        return r8;
+    }
+
+    /**
+     * Sets the bit corresponding to {@code mask} in the working counter register.
+     */
+    private static void setRegisterBit(byte[] r8, long mask) {
+        r8[5] |= (byte) ((mask >> 16) & 0x1F);
+        r8[6] = (byte) ((mask >> 8) & 0xFF);
+        r8[7] = (byte) (mask & 0xFF);
     }
 
     /**
@@ -116,9 +139,7 @@ public final class DukptEngine {
      * @return 16-byte session PIN key
      */
     public static byte[] derivePinKey(byte[] bdk, byte[] ksn) {
-        byte[] ipek = deriveIpek(bdk, ksn);
-        byte[] transKey = deriveTransactionKey(ipek, ksn);
-        return CryptoUtils.xor(transKey, PIN_VARIANT_MASK);
+        return deriveSessionKey(bdk, ksn, PIN_VARIANT_MASK);
     }
 
     /**
@@ -129,9 +150,7 @@ public final class DukptEngine {
      * @return 16-byte session MAC key
      */
     public static byte[] deriveMacKey(byte[] bdk, byte[] ksn) {
-        byte[] ipek = deriveIpek(bdk, ksn);
-        byte[] transKey = deriveTransactionKey(ipek, ksn);
-        return CryptoUtils.xor(transKey, MAC_VARIANT_MASK);
+        return deriveSessionKey(bdk, ksn, MAC_VARIANT_MASK);
     }
 
     /**
@@ -142,9 +161,17 @@ public final class DukptEngine {
      * @return 16-byte session Data key
      */
     public static byte[] deriveDataKey(byte[] bdk, byte[] ksn) {
-        byte[] ipek = deriveIpek(bdk, ksn);
+        return deriveSessionKey(bdk, ksn, DATA_VARIANT_MASK);
+    }
+
+    /**
+     * Shared derivation path for PIN/MAC/Data session keys: IPEK -> transaction key -> variant XOR.
+     * The three public derive*Key methods differ only in which variant mask is applied.
+     */
+    private static byte[] deriveSessionKey(byte[] bdk, byte[] ksn, byte[] variantMask) {
+        byte[] ipek = deriveIPEK(bdk, ksn);
         byte[] transKey = deriveTransactionKey(ipek, ksn);
-        return CryptoUtils.xor(transKey, DATA_VARIANT_MASK);
+        return CryptoUtils.xor(transKey, variantMask);
     }
 
     /**
@@ -162,30 +189,38 @@ public final class DukptEngine {
     // ─────────────────────────────────────────────────────────────────────────
 
     private static byte[] nonReversibleKeyGeneration(byte[] key, byte[] r8) {
-        byte[] leftKey = new byte[8];
-        byte[] rightKey = new byte[8];
-        System.arraycopy(key, 0, leftKey, 0, 8);
-        System.arraycopy(key, 8, rightKey, 0, 8);
+        byte[] leftKey = leftHalf(key);
+        byte[] rightKey = rightHalf(key);
 
         // Message = rightKey XOR r8
         byte[] msg = CryptoUtils.xor(rightKey, r8);
 
         // DES encrypt msg under leftKey
-        byte[] desLeft = CryptoUtils.desEncryptEcb(msg, leftKey);
-        byte[] newRight = CryptoUtils.xor(desLeft, rightKey);
+        byte[] newRight = CryptoUtils.xor(CryptoUtils.desEncryptEcb(msg, leftKey), rightKey);
 
         // Left key XOR with variant mask
-        byte[] keyXor = CryptoUtils.xor(key, KEY_REGISTER_MASK);
-        byte[] leftKeyXor = new byte[8];
-        System.arraycopy(keyXor, 0, leftKeyXor, 0, 8);
+        byte[] leftKeyXor = leftHalf(CryptoUtils.xor(key, KEY_REGISTER_MASK));
+        byte[] newLeft = CryptoUtils.xor(CryptoUtils.desEncryptEcb(msg, leftKeyXor), leftKey);
 
-        byte[] desRight = CryptoUtils.desEncryptEcb(msg, leftKeyXor);
-        byte[] newLeft = CryptoUtils.xor(desRight, leftKey);
+        return combineHalves(newLeft, newRight);
+    }
 
-        byte[] result = new byte[16];
-        System.arraycopy(newLeft, 0, result, 0, 8);
-        System.arraycopy(newRight, 0, result, 8, 8);
+    private static byte[] leftHalf(byte[] key) {
+        byte[] left = new byte[HALF_KEY_LENGTH];
+        System.arraycopy(key, 0, left, 0, HALF_KEY_LENGTH);
+        return left;
+    }
 
-        return result;
+    private static byte[] rightHalf(byte[] key) {
+        byte[] right = new byte[HALF_KEY_LENGTH];
+        System.arraycopy(key, HALF_KEY_LENGTH, right, 0, HALF_KEY_LENGTH);
+        return right;
+    }
+
+    private static byte[] combineHalves(byte[] left, byte[] right) {
+        byte[] combined = new byte[HALF_KEY_LENGTH * 2];
+        System.arraycopy(left, 0, combined, 0, HALF_KEY_LENGTH);
+        System.arraycopy(right, 0, combined, HALF_KEY_LENGTH, HALF_KEY_LENGTH);
+        return combined;
     }
 }

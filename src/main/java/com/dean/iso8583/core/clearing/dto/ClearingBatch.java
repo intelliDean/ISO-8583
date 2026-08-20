@@ -1,4 +1,4 @@
-package com.dean.iso8583.core.clearing;
+package com.dean.iso8583.core.clearing.dto;
 
 import lombok.Builder;
 

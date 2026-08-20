@@ -1,9 +1,12 @@
 package com.dean.iso8583.web.service;
 
+import com.dean.iso8583.core.clearing.dto.ClearingBatch;
+import com.dean.iso8583.core.clearing.dto.ClearingRecord;
 import com.dean.iso8583.core.dto.IsoFieldDef;
 import com.dean.iso8583.core.dto.IsoSpecDefinition;
 import com.dean.iso8583.core.echo.dto.ChannelStatusReport;
 import com.dean.iso8583.core.echo.dto.EchoResult;
+import com.dean.iso8583.core.reversal.TransactionRecord;
 import com.dean.iso8583.web.data.dto.*;
 
 import java.util.Map;
@@ -34,7 +37,7 @@ public interface ISO8583Service {
      *
      * @return collection of transaction records
      */
-    java.util.Collection<com.dean.iso8583.core.reversal.TransactionRecord> getTransactions();
+    java.util.Collection<TransactionRecord> getTransactions();
 
     /**
      * Executes an on-demand ISO 8583 0800 Keep-Alive Echo test against the peer host.
@@ -73,27 +76,27 @@ public interface ISO8583Service {
     /**
      * Generates an end-of-day Dual-Message System (DMS) 1240 settlement clearing batch.
      */
-    com.dean.iso8583.core.clearing.ClearingBatch generateClearingBatch(ClearingBatchRequest request);
+    ClearingBatch generateClearingBatch(ClearingBatchRequest request);
 
     /**
      * Files a 1440 Chargeback dispute against a settled transaction.
      */
-    com.dean.iso8583.core.clearing.ClearingRecord fileChargeback(ChargebackRequest request);
+    ClearingRecord fileChargeback(ChargebackRequest request);
 
     /**
      * Parses an incoming raw batch clearing file.
      */
-    com.dean.iso8583.core.clearing.ClearingBatch parseClearingBatch(ClearingParseRequest request);
+    ClearingBatch parseClearingBatch(ClearingParseRequest request);
 
     /**
      * Retrieves all archived clearing batches.
      */
-    java.util.Collection<com.dean.iso8583.core.clearing.ClearingBatch> getClearingBatches();
+    java.util.Collection<ClearingBatch> getClearingBatches();
 
     /**
      * Retrieves all filed chargeback records.
      */
-    java.util.Collection<com.dean.iso8583.core.clearing.ClearingRecord> getChargebacks();
+    java.util.Collection<ClearingRecord> getChargebacks();
 
     /**
      * Retrieves distributed persistence, distributed locking, and Kafka Outbox telemetry.

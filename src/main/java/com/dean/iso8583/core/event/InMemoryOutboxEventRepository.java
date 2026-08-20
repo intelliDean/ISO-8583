@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 
 /**
  * Thread-safe in-memory implementation of {@link OutboxEventRepository}.
@@ -22,24 +23,26 @@ public class InMemoryOutboxEventRepository implements OutboxEventRepository {
 
     @Override
     public void save(IsoOutboxEvent event) {
-        store.put(event.eventId(), event);
-        log.debug("Outbox event saved: ID={} Type={} Aggregate={}:{}",
+        storeAndLog(event, "Outbox event saved: ID={} Type={} Aggregate={}:{}",
                 event.eventId(), event.eventType(), event.aggregateType(), event.aggregateId());
     }
 
     @Override
-    public List<IsoOutboxEvent> findPendingEvents(int limit) {
-        return store.values().stream()
-                .filter(e -> e.status() == IsoOutboxEvent.OutboxStatus.PENDING)
-                .sorted(Comparator.comparing(IsoOutboxEvent::createdAt))
-                .limit(limit)
-                .toList();
+    public void update(IsoOutboxEvent event) {
+        storeAndLog(event, "Outbox event updated: ID={} Status={}", event.eventId(), event.status());
+    }
+
+    private void storeAndLog(IsoOutboxEvent event, String logTemplate, Object... logArgs) {
+        store.put(event.eventId(), event);
+        log.debug(logTemplate, logArgs);
     }
 
     @Override
-    public void update(IsoOutboxEvent event) {
-        store.put(event.eventId(), event);
-        log.debug("Outbox event updated: ID={} Status={}", event.eventId(), event.status());
+    public List<IsoOutboxEvent> findPendingEvents(int limit) {
+        return pendingEvents()
+                .sorted(Comparator.comparing(IsoOutboxEvent::createdAt))
+                .limit(limit)
+                .toList();
     }
 
     @Override
@@ -54,8 +57,11 @@ public class InMemoryOutboxEventRepository implements OutboxEventRepository {
 
     @Override
     public int countPending() {
-        return (int) store.values().stream()
-                .filter(e -> e.status() == IsoOutboxEvent.OutboxStatus.PENDING)
-                .count();
+        return (int) pendingEvents().count();
+    }
+
+    private Stream<IsoOutboxEvent> pendingEvents() {
+        return store.values().stream()
+                .filter(e -> e.status() == IsoOutboxEvent.OutboxStatus.PENDING);
     }
 }

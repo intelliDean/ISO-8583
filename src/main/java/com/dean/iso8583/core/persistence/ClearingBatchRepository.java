@@ -1,7 +1,7 @@
 package com.dean.iso8583.core.persistence;
 
-import com.dean.iso8583.core.clearing.ClearingBatch;
-import com.dean.iso8583.core.clearing.ClearingRecord;
+import com.dean.iso8583.core.clearing.dto.ClearingBatch;
+import com.dean.iso8583.core.clearing.dto.ClearingRecord;
 
 import java.util.Collection;
 import java.util.Optional;

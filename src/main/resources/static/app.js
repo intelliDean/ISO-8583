@@ -8,10 +8,13 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function switchTab(tabId) {
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    document.querySelectorAll('.tab-btn')
+        .forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-content')
+        .forEach(content => content.classList.remove('active'));
 
-    const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(btn => btn.getAttribute('onclick').includes(tabId));
+    const activeBtn = Array.from(document.querySelectorAll('.tab-btn'))
+        .find(btn => btn.getAttribute('onclick').includes(tabId));
     if (activeBtn) activeBtn.classList.add('active');
 
     const targetTab = document.getElementById(`tab-${tabId}`);
@@ -37,8 +40,9 @@ function loadPreset(type) {
         // DE 11 STAN (FIXED 6), DE 41 Terminal ID (FIXED 8), DE 42 Merchant ID (FIXED 15), DE 49 Currency (FIXED 3)
         // Bitmap: 7020000000C08000
         rawInput.value =
-            "600000000002007020000000C0800016453201558899123400000000000000255000012 3TERM0001MERCHANT1234567840".replace(
-                /\s/g, '');
+            "600000000002007020000000C0800016453201558899123400000000000000255000012 3TERM0001MERCHANT1234567840"
+                .replace(/\s/g, '');
+
     } else if (type === 'echo') {
         hasHeader.checked = false;
         // 0800 Network Management: DE 11 STAN (FIXED 6), DE 70 NMIC (FIXED 3)
@@ -48,7 +52,7 @@ function loadPreset(type) {
         // 0400 Reversal: same fields as financial request
         rawInput.value =
             "600000000004007020000000C0800016453201558899123400000000000000255000012 3TERM0001MERCHANT1234567840"
-            .replace(/\s/g, '');
+                .replace(/\s/g, '');
     }
     unpackPayload();
 }
@@ -59,13 +63,15 @@ async function unpackPayload() {
 
     if (!payload) return;
 
-    const specId = document.getElementById('inspectSpecSelect') ? document.getElementById('inspectSpecSelect').value : 'iso8583-1987';
+    const specId = document.getElementById('inspectSpecSelect')
+        ? document.getElementById('inspectSpecSelect').value
+        : 'iso8583-1987';
 
     try {
         const res = await fetch('/api/iso/unpack', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ payload, hasHeader, specId })
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({payload, hasHeader, specId})
         });
 
         if (!res.ok) throw new Error('Unpack failed');
@@ -164,7 +170,8 @@ function inspectBit(bitId) {
     const def = fieldCatalog[bitId];
 
     if (bitId === 1) {
-        hoverCard.innerHTML = `<strong>Bit 1: Secondary Bitmap</strong> - Indicates presence of Data Elements 65 to 128.`;
+        hoverCard.innerHTML =
+            `<strong>Bit 1: Secondary Bitmap</strong> - Indicates presence of Data Elements 65 to 128.`;
         return;
     }
 
@@ -257,8 +264,8 @@ async function generatePackedMessage() {
     try {
         const res = await fetch('/api/iso/pack', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ header, mti, fields })
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({header, mti, fields})
         });
 
         if (!res.ok) throw new Error('Packing failed');
@@ -288,8 +295,8 @@ async function packAndSimulate() {
     try {
         const res = await fetch('/api/iso/simulate', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ rawPayload })
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({rawPayload})
         });
 
         const data = await res.json();

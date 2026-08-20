@@ -1,9 +1,9 @@
 package com.dean.iso8583;
 
 import com.dean.iso8583.core.clearing.BatchClearingEngine;
-import com.dean.iso8583.core.clearing.ClearingBatch;
-import com.dean.iso8583.core.clearing.ClearingRecord;
-import com.dean.iso8583.core.clearing.InterchangeFeeCalculator;
+import com.dean.iso8583.core.clearing.dto.ClearingBatch;
+import com.dean.iso8583.core.clearing.dto.ClearingRecord;
+import com.dean.iso8583.core.clearing.utils.InterchangeFeeCalculator;
 import com.dean.iso8583.core.dto.IsoMessage;
 import com.dean.iso8583.core.event.InMemoryOutboxEventRepository;
 import com.dean.iso8583.core.event.IsoEventPublisher;

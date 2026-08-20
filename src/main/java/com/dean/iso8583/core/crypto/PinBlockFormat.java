@@ -1,5 +1,8 @@
 package com.dean.iso8583.core.crypto;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
 /**
  * Developer Note:
  * Standard ISO 9564 PIN Block Formats for financial transaction card security.
@@ -20,6 +23,8 @@ package com.dean.iso8583.core.crypto;
  *       16-byte AES-based PIN block format defined in ISO 9564-1:2017 for AES-128/AES-256 PIN encryption.</li>
  * </ul>
  */
+@Getter
+@AllArgsConstructor
 public enum PinBlockFormat {
 
     /** ISO 9564-1 Format 0 (ANSI X9.8 / Visa-1 / ISO-0) — PAN XORed block */
@@ -37,20 +42,7 @@ public enum PinBlockFormat {
     private final int blockSizeBytes;
     private final String description;
 
-    PinBlockFormat(int blockSizeBytes, String description) {
-        this.blockSizeBytes = blockSizeBytes;
-        this.description = description;
-    }
-
-    public int getBlockSizeBytes() {
-        return blockSizeBytes;
-    }
-
     public int getBlockSizeHexChars() {
         return blockSizeBytes * 2;
-    }
-
-    public String getDescription() {
-        return description;
     }
 }

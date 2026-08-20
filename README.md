@@ -1,4 +1,4 @@
-# ISO 8583 Enterprise Payment Protocol Engine & Host Simulator
+# ISO 8583: Enterprise Payment Protocol Engine & Host Simulator
 
 [![Java](https://img.shields.io/badge/Java-21%2B%20%2F%2026-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1.0-6DB33F?style=for-the-badge&logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
@@ -35,13 +35,13 @@ A high-performance, enterprise-grade financial transaction engine and payment sw
 │   • ISO 8583:1987, Visa SMS, Mastercard IPM    │   • ARQC (9F26), ATC (9F36), IAD (9F10)        │
 │   • 128-Bit Dynamic Bitmask Matrix Parser      │   • Fraud Signal Extraction & Audit Log        │
 ├────────────────────────────────────────────────┼────────────────────────────────────────────────┤
-│ 🔐 Cryptography & PIN Translation (Option A)   │ 🏦 Batch Clearing & Settlement (Option B)      │
+│ 🔐 Cryptography & PIN Translation              │ 🏦 Batch Clearing & Settlement                 │
 │   • ISO 9564 PIN Blocks (Formats 0, 1, 3, 4)   │   • 1240 First Presentment Batch Generator     │
 │   • ANSI X9.24 DUKPT Key Management (BDK/IPEK) │   • 1440 Chargeback Dispute Filing             │
 │   • ISO 9797-1 Retail MAC (DE 64 / DE 128)     │   • 1644 File Header/Trailer Reconciliation    │
 │   • Cross-Zone PIN Translation (Acq -> Iss)    │   • Scheme Interchange Fee Calculator          │
 ├────────────────────────────────────────────────┼────────────────────────────────────────────────┤
-│ 💾 Distributed Persistence (Option C)          │ 📡 Network Management (Echo / Keep-Alive)      │
+│ 💾 Distributed Persistence                     │ 📡 Network Management (Echo / Keep-Alive)      │
 │   • PostgreSQL 16 Schema V1.0 (Flyway)         │   • 0800 / 0810 Heartbeat Automation           │
 │   • Redis 7 Distributed State Locks (TTL safe) │   • Channel Health Telemetry (RTT latency)     │
 │   • Kafka Transactional Outbox Event Streaming │   • Auto-Recovery on Socket Interruption       │
@@ -68,7 +68,7 @@ A high-performance, enterprise-grade financial transaction engine and payment sw
   - **ATC (Tag 9F36)**: Application Transaction Counter (tracks card counter increments).
   - **IAD (Tag 9F10)**: Issuer Application Data.
 
-### 4. Enterprise Cryptography & PIN Translation (Option A)
+### 4. Enterprise Cryptography & PIN Translation
 - **ISO 9564 PIN Block Engine**:
   - **Format 0 (ANSI X9.8)**: PAN-XOR block format.
   - **Format 1 (ISO-1)**: Transaction-independent format with random padding.
@@ -78,18 +78,18 @@ A high-performance, enterprise-grade financial transaction engine and payment sw
 - **ANSI X9.24 DUKPT Engine**: Derived Unique Key Per Transaction with 10-byte KSN parsing, IPEK derivation, and non-reversible future key registers.
 - **ISO 9797-1 Retail MAC**: Double-length 3DES CBC-MAC (Algorithm 3) over DE 64/DE 128 with tamper detection.
 
-### 5. Dual-Message System (DMS) Batch Clearing & Settlement (Option B)
+### 5. Dual-Message System (DMS) Batch Clearing & Settlement 
 - **1240 First Presentment**: Aggregates authorized transactions into settlement clearing batches.
 - **1440 Chargeback Management**: Files issuer dispute records with scheme reason codes (`4837` Fraud, `4853` Defective Goods).
 - **1644 Control Totals**: Generates batch headers and trailers with gross, interchange fee, and net settlement reconciliation.
 - **Interchange Fee Calculator**: Precision-safe `BigDecimal` calculation (1.5% + $0.10 scheme assessment).
 
-### 6. Distributed Persistence & Resiliency (Option C)
+### 6. Distributed Persistence & Resiliency
 - **PostgreSQL 16 Schema (Flyway V1.0)**: Indexed tables for transactions, clearing batches, outbox events, and crypto key registries.
 - **Redis 7 Distributed Locking**: Coordinates cluster mutations on `STAN:MaskedPAN` to eliminate race conditions and double-reversals.
 - **Transactional Outbox Event Streaming**: Guarantees at-least-once publishing of payment domain events to Apache Kafka topics (`iso.transactions.v1`, `iso.clearing.v1`, `iso.security.v1`).
 
-### 7. Interactive 8-Tab Web Control Center (Option D)
+### 7. Interactive 8-Tab Web Control Center
 Accessible at `http://localhost:8080`:
 1. **🔍 Message Inspector**: Unpack any payload with interactive field tables and summary cards.
 2. **⚡ Message Builder & TCP Simulator**: Compose and fire live messages to the TCP Host.

@@ -85,7 +85,8 @@ public class IsoEchoManager {
         totalEchoesSent.incrementAndGet();
         lastEchoTime = Instant.now();
 
-        log.debug("Sending ISO 8583 0800 Keep-Alive Echo — STAN={} DE70={}", stan, NetworkManagementCode.ECHO_TEST.getCode());
+        log.debug("Sending ISO 8583 0800 Keep-Alive Echo — STAN={} DE70={}",
+                stan, NetworkManagementCode.ECHO_TEST.getCode());
 
         SimulateResult simulation = tcpClient.simulate(packedRequest);
 

@@ -3,6 +3,7 @@ package com.dean.iso8583.server;
 import com.dean.iso8583.core.dto.IsoMessage;
 import com.dean.iso8583.core.IsoPacker;
 import com.dean.iso8583.core.IsoUnpacker;
+import com.dean.iso8583.core.utils.IsoMessageSanitizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.SmartLifecycle;
@@ -157,7 +158,7 @@ public class IsoTcpServer implements SmartLifecycle {
         output.flush();
 
         log.info("Sent ISO 8583 response: {}", 
-                com.dean.iso8583.core.utils.IsoMessageSanitizer.sanitizeMessage(response));
+                IsoMessageSanitizer.sanitizeMessage(response));
     }
 
     private boolean hasTPDUHeader(String payload) {

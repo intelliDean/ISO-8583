@@ -115,7 +115,7 @@ public final class IsoPacker {
     }
 
     private static String formatField(IsoFieldDef definition, String value) {
-        Objects.requireNonNull(value, "Value cannot be null for field " + definition.fieldId());
+        Objects.requireNonNull(value, "Value cannot be null for field: %d".formatted(definition.fieldId()));
 
         return switch (definition.type()) {
             case FIXED_NUMERIC -> formatFixedNumeric(definition, value);

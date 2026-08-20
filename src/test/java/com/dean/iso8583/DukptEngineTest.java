@@ -17,8 +17,8 @@ class DukptEngineTest {
 
     @Test
     @DisplayName("Derives reproducible IPEK from BDK and KSN")
-    void shouldDeriveIpek() {
-        byte[] ipek = DukptEngine.deriveIpek(BDK, KSN_1);
+    void shouldDeriveIPEK() {
+        byte[] ipek = DukptEngine.deriveIPEK(BDK, KSN_1);
 
         assertThat(ipek).hasSize(16);
         assertThat(CryptoUtils.bytesToHex(ipek)).isNotEmpty();

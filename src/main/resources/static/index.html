@@ -1615,42 +1615,53 @@ async function unpackPayload() {
         const res = await fetch(API + '/api/iso/unpack', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ rawPayload: raw, hasHeader, specId: spec })
+            body: JSON.stringify({ payload: raw, rawPayload: raw, hasHeader, specId: spec })
         });
         const data = await res.json();
         renderInspectionResult(data);
-        document.getElementById('inspectionResult').classList.remove('hidden');
+        const resultCard = document.getElementById('inspectionResult');
+        if (resultCard) resultCard.classList.remove('hidden');
     } catch (e) {
         showToast('Unpack failed: ' + e.message, 'error');
     }
 }
 
 function renderInspectionResult(data) {
-    document.getElementById('resHeader').textContent      = data.header || 'None';
-    document.getElementById('resMti').textContent         = data.mti || '—';
-    document.getElementById('resMtiDesc').textContent     = data.mtiDescription || '—';
-    document.getElementById('resPrimaryBitmap').textContent   = data.primaryBitmapHex || '—';
-    document.getElementById('resSecondaryBitmap').textContent = data.secondaryBitmapHex || 'None';
-    document.getElementById('resFieldCount').textContent  = (data.fields || []).length + ' fields';
+    if (!data) return;
+    const resHeaderEl = document.getElementById('resHeader');
+    if (resHeaderEl) resHeaderEl.textContent = data.header || 'None';
+    const resMtiEl = document.getElementById('resMti');
+    if (resMtiEl) resMtiEl.textContent = data.mti || '—';
+    const resMtiDescEl = document.getElementById('resMtiDesc');
+    if (resMtiDescEl) resMtiDescEl.textContent = data.mtiDescription || '—';
+    const resPrimEl = document.getElementById('resPrimaryBitmap');
+    if (resPrimEl) resPrimEl.textContent = data.primaryBitmapHex || '—';
+    const resSecEl = document.getElementById('resSecondaryBitmap');
+    if (resSecEl) resSecEl.textContent = data.secondaryBitmapHex || 'None';
+    const resCountEl = document.getElementById('resFieldCount');
+    if (resCountEl) resCountEl.textContent = (data.fields || []).length + ' fields';
 
     const tbody = document.getElementById('fieldsTableBody');
-    tbody.innerHTML = '';
-    (data.fields || []).forEach(f => {
-        const typeBadge = badgeForType(f.type);
-        tbody.innerHTML += `<tr>
-            <td>DE ${f.fieldNumber}</td>
-            <td>${escHtml(f.name || '')}</td>
-            <td>${typeBadge}</td>
-            <td><span class="field-val">${escHtml(f.value || '')}</span></td>
-        </tr>`;
-    });
+    if (tbody) {
+        tbody.innerHTML = '';
+        (data.fields || []).forEach(f => {
+            const fieldNum = f.fieldId !== undefined ? f.fieldId : (f.fieldNumber !== undefined ? f.fieldNumber : '—');
+            const typeBadge = badgeForType(f.type);
+            tbody.innerHTML += `<tr>
+                <td>DE ${fieldNum}</td>
+                <td>${escHtml(f.name || '')}</td>
+                <td>${typeBadge}</td>
+                <td><span class="field-val">${escHtml(f.value || '')}</span></td>
+            </tr>`;
+        });
+    }
 
     // sync bitmap grid if bitmap tab was visited
     if (data.primaryBitmapHex) renderBitmapFromHex(data.primaryBitmapHex, data.secondaryBitmapHex);
 }
 
 function badgeForType(t) {
-    const map = { FIXED: 'badge-blue', LLVAR_ALPHA: 'badge-green', LLLVAR: 'badge-amber', BINARY: 'badge-violet' };
+    const map = { FIXED: 'badge-blue', FIXED_NUMERIC: 'badge-blue', LLVAR_ALPHA: 'badge-green', LLVAR: 'badge-green', LLLVAR: 'badge-amber', BINARY: 'badge-violet' };
     return `<span class="badge ${map[t] || 'badge-cyan'}">${t || '—'}</span>`;
 }
 

@@ -1,5 +1,7 @@
 package com.dean.iso8583.core.emv.dto;
 
+import lombok.Builder;
+
 import java.util.List;
 
 /**
@@ -17,6 +19,7 @@ import java.util.List;
  * @param rawHex  the original DE 55 hex string that was parsed
  * @param tags    ordered list of decoded {@link EmvTag} elements
  */
+@Builder
 public record EmvParseResult(
         String rawHex,
         List<EmvTag> tags

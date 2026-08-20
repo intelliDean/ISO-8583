@@ -31,41 +31,84 @@ public class InMemoryDistributedLockService implements DistributedLockService {
         while (System.currentTimeMillis() <= deadline) {
             cleanExpiredLocks();
 
-            LockHolder existing = locks.get(lockKey);
-            if (existing == null) {
-                ReentrantLock lock = new ReentrantLock();
-                try {
-                    if (lock.tryLock(Math.max(1, deadline - System.currentTimeMillis()), TimeUnit.MILLISECONDS)) {
-                        long expiry = System.currentTimeMillis() + leaseTimeMs;
-                        LockHolder holder = new LockHolder(lock, token, expiry);
-                        if (locks.putIfAbsent(lockKey, holder) == null) {
-                            log.debug("Distributed Lock Acquired: Key='{}' Token='{}' Lease={}ms", lockKey, token, leaseTimeMs);
-                            return token;
-                        } else {
-                            lock.unlock();
-                        }
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+            if (locks.get(lockKey) == null) {
+                AcquireAttempt attempt = attemptAcquire(lockKey, token, deadline, leaseTimeMs);
+
+                if (attempt.status() == AttemptStatus.ACQUIRED) {
+                    return attempt.token();
+                } else if (attempt.status() == AttemptStatus.INTERRUPTED) {
                     return null;
                 }
+                // AttemptStatus.RETRY: another thread won the race, loop will sleep and retry
             }
 
-            try {
-                Thread.sleep(10);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return null;
-            }
+            if (!sleepBriefly()) return null;
+
         }
 
         log.warn("Distributed Lock Acquisition Timed Out: Key='{}' WaitTimeout={}ms", lockKey, waitTimeoutMs);
         return null;
     }
 
+    /**
+     * Attempts a single lock-and-register cycle: blocks on the local {@link ReentrantLock}
+     * up to the remaining time until deadline, then races to register the holder in the map.
+     */
+    private AcquireAttempt attemptAcquire(String lockKey, String token, long deadline, long leaseTimeMs) {
+        ReentrantLock lock = new ReentrantLock();
+        try {
+            long remaining = Math.max(1, deadline - System.currentTimeMillis());
+            if (!lock.tryLock(remaining, TimeUnit.MILLISECONDS)) {
+                return AcquireAttempt.retry();
+            }
+            return registerLockHolder(lockKey, token, leaseTimeMs, lock);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return AcquireAttempt.interrupted();
+        }
+    }
+
+    /**
+     * Publishes the acquired local lock into the shared map. If another thread won the race
+     * for {@code lockKey} in the meantime, releases the local lock and signals retry.
+     */
+    private AcquireAttempt registerLockHolder(
+            String lockKey,
+            String token,
+            long leaseTimeMs,
+            ReentrantLock lock
+    ) {
+        long expiry = System.currentTimeMillis() + leaseTimeMs;
+        LockHolder holder = new LockHolder(lock, token, expiry);
+
+        if (locks.putIfAbsent(lockKey, holder) != null) {
+            lock.unlock();
+            return AcquireAttempt.retry();
+        }
+
+        log.debug("Distributed Lock Acquired: Key='{}' Token='{}' Lease={}ms", lockKey, token, leaseTimeMs);
+        return AcquireAttempt.acquired(token);
+    }
+
+    /**
+     * Backs off briefly between acquisition attempts.
+     *
+     * @return false if interrupted while sleeping (caller should abort and return null)
+     */
+    private boolean sleepBriefly() {
+        try {
+            Thread.sleep(10);
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
     @Override
     public boolean release(String lockKey, String lockToken) {
         LockHolder holder = locks.get(lockKey);
+
         if (holder != null && holder.token().equals(lockToken)) {
             locks.remove(lockKey);
             try {
@@ -83,7 +126,8 @@ public class InMemoryDistributedLockService implements DistributedLockService {
     public <T> T executeWithLock(String lockKey, long waitTimeoutMs, long leaseTimeMs, Supplier<T> action) {
         String token = tryAcquire(lockKey, waitTimeoutMs, leaseTimeMs);
         if (token == null) {
-            throw new LockAcquisitionException("Failed to acquire lock for key: " + lockKey + " within " + waitTimeoutMs + "ms");
+            throw new LockAcquisitionException("Failed to acquire lock for key: %s within %dms"
+                    .formatted(lockKey, waitTimeoutMs));
         }
         try {
             return action.get();

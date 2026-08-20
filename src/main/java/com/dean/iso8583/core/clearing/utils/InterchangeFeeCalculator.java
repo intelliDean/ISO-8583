@@ -1,7 +1,9 @@
-package com.dean.iso8583.core.clearing;
+package com.dean.iso8583.core.clearing.utils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+
+import static com.dean.iso8583.core.clearing.utils.ClearingUtils.*;
 
 /**
  * Developer Note:
@@ -20,8 +22,7 @@ import java.math.RoundingMode;
  */
 public final class InterchangeFeeCalculator {
 
-    private static final BigDecimal DEFAULT_PERCENTAGE_RATE = new BigDecimal("0.0150"); // 1.50%
-    private static final BigDecimal DEFAULT_FIXED_FEE = new BigDecimal("0.10");         // $0.10
+
 
     private InterchangeFeeCalculator() {
         // Utility class
@@ -37,35 +38,38 @@ public final class InterchangeFeeCalculator {
         return calculateFee(amountIso, DEFAULT_PERCENTAGE_RATE, DEFAULT_FIXED_FEE);
     }
 
-    /**
-     * Calculates the interchange fee given custom percentage and fixed fee rates.
-     *
-     * @param amountIso       12-digit ISO 8583 transaction amount
-     * @param percentageRate  e.g. 0.0150 for 1.50%
-     * @param fixedFeeDollars e.g. 0.10 for $0.10
-     * @return 12-digit ISO 8583 interchange fee string
-     */
     public static String calculateFee(String amountIso, BigDecimal percentageRate, BigDecimal fixedFeeDollars) {
-        if (amountIso == null || amountIso.isBlank()) {
-            return "000000000000";
-        }
+
+        if (isBlankAmount(amountIso)) return ZERO_FEE_ISO;
 
         try {
-            long rawCents = Long.parseLong(amountIso.trim());
-            BigDecimal dollars = BigDecimal.valueOf(rawCents).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-
-            BigDecimal variableFee = dollars.multiply(percentageRate);
-            BigDecimal totalFeeDollars = variableFee.add(fixedFeeDollars);
-
-            long feeCents = totalFeeDollars.multiply(BigDecimal.valueOf(100))
-                    .setScale(0, RoundingMode.HALF_UP)
-                    .longValue();
-
-            if (feeCents < 0) feeCents = 0;
-
-            return String.format("%012d", feeCents);
+            BigDecimal dollars = centsIsoToDollars(amountIso);
+            long feeCents = computeFeeCents(dollars, percentageRate, fixedFeeDollars);
+            return formatCentsIso(feeCents);
         } catch (NumberFormatException e) {
-            return "000000000000";
+            return ZERO_FEE_ISO;
         }
+    }
+
+    private static boolean isBlankAmount(String amountIso) {
+        return amountIso == null || amountIso.isBlank();
+    }
+
+    private static BigDecimal centsIsoToDollars(String amountIso) {
+        long rawCents = Long.parseLong(amountIso.trim());
+        return BigDecimal.valueOf(rawCents).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+    }
+
+    private static long computeFeeCents(BigDecimal dollars, BigDecimal percentageRate, BigDecimal fixedFeeDollars) {
+        BigDecimal variableFee = dollars.multiply(percentageRate);
+        BigDecimal totalFeeDollars = variableFee.add(fixedFeeDollars);
+        long feeCents = totalFeeDollars.multiply(BigDecimal.valueOf(100))
+                .setScale(0, RoundingMode.HALF_UP)
+                .longValue();
+        return Math.max(0, feeCents);
+    }
+
+    private static String formatCentsIso(long cents) {
+        return "%012d".formatted(cents);
     }
 }

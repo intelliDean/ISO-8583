@@ -30,57 +30,57 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class CryptoKeyRegistry {
 
+    private static final Map<String, String> DEFAULT_TEST_KEYS_HEX = Map.of(
+            "DEFAULT_ZPK_ACQ", "0123456789ABCDEFFEDCBA9876543210",
+            "DEFAULT_ZPK_ISS", "FEDCBA98765432100123456789ABCDEF",
+            "DEFAULT_MAK",     "0123456789ABCDEFFEDCBA9876543210",
+            "DEFAULT_BDK",     "0123456789ABCDEFFEDCBA9876543210"
+    );
+
     private final ConcurrentHashMap<String, byte[]> keys = new ConcurrentHashMap<>();
 
     @Autowired(required = false)
     private IsoEventPublisher eventPublisher;
 
     public CryptoKeyRegistry() {
-        // Initialize standard default test keys for simulated development environment
-        registerKeyInternal("DEFAULT_ZPK_ACQ", CryptoUtils.hexToBytes("0123456789ABCDEFFEDCBA9876543210"));
-        registerKeyInternal("DEFAULT_ZPK_ISS", CryptoUtils.hexToBytes("FEDCBA98765432100123456789ABCDEF"));
-        registerKeyInternal("DEFAULT_MAK",     CryptoUtils.hexToBytes("0123456789ABCDEFFEDCBA9876543210"));
-        registerKeyInternal("DEFAULT_BDK",     CryptoUtils.hexToBytes("0123456789ABCDEFFEDCBA9876543210"));
+        registerDefaultTestKeys();
     }
 
-    private void registerKeyInternal(String keyId, byte[] keyBytes) {
-        keys.put(keyId.toUpperCase(), keyBytes);
-        log.info("Registered cryptographic key '{}' ({} bytes)", keyId.toUpperCase(), keyBytes.length);
+    // Initializes standard default test keys for simulated development environment
+    private void registerDefaultTestKeys() {
+        DEFAULT_TEST_KEYS_HEX.forEach((keyId, hex) ->
+                storeKey(normalize(keyId), CryptoUtils.hexToBytes(hex)));
     }
 
     /**
      * Registers or updates a named cryptographic key.
      *
-     * @param keyId   unique key identifier (e.g. "VISA_ZPK", "ACQUIRER_MAK")
+     * @param keyId    unique key identifier (e.g. "VISA_ZPK", "ACQUIRER_MAK")
      * @param keyBytes key material bytes
      */
     public void registerKey(String keyId, byte[] keyBytes) {
-        if (keyId == null || keyId.isBlank() || keyBytes == null) {
-            throw new IllegalArgumentException("Key ID and key material must not be null or empty");
-        }
-        String normalizedId = keyId.toUpperCase();
-        keys.put(normalizedId, keyBytes);
-        log.info("Registered cryptographic key '{}' ({} bytes)", normalizedId, keyBytes.length);
+        validateKeyInput(keyId, keyBytes);
 
-        if (eventPublisher != null) {
-            eventPublisher.publish("CRYPTO_KEY", normalizedId, IsoEventType.CRYPTO_KEY_ROTATED,
-                    Map.of("keyId", normalizedId, "keyLengthBytes", keyBytes.length));
-        }
+        String normalizedId = normalize(keyId);
+        storeKey(normalizedId, keyBytes);
+        publishKeyRotated(normalizedId, keyBytes.length);
     }
 
     /**
      * Retrieves a registered key by ID.
      */
     public Optional<byte[]> getKey(String keyId) {
+
         if (keyId == null) return Optional.empty();
-        return Optional.ofNullable(keys.get(keyId.toUpperCase()));
+
+        return Optional.ofNullable(keys.get(normalize(keyId)));
     }
 
     /**
      * Checks if a key exists in the registry.
      */
     public boolean hasKey(String keyId) {
-        return keyId != null && keys.containsKey(keyId.toUpperCase());
+        return keyId != null && keys.containsKey(normalize(keyId));
     }
 
     /**
@@ -88,5 +88,29 @@ public class CryptoKeyRegistry {
      */
     public int size() {
         return keys.size();
+    }
+
+    private void validateKeyInput(String keyId, byte[] keyBytes) {
+        if (keyId == null || keyId.isBlank() || keyBytes == null) {
+            throw new IllegalArgumentException("Key ID and key material must not be null or empty");
+        }
+    }
+
+    private String normalize(String keyId) {
+        return keyId.toUpperCase();
+    }
+
+    private void storeKey(String normalizedId, byte[] keyBytes) {
+        keys.put(normalizedId, keyBytes);
+        log.info("Registered cryptographic key '{}' ({} bytes)", normalizedId, keyBytes.length);
+    }
+
+    private void publishKeyRotated(String normalizedId, int keyLengthBytes) {
+
+        if (eventPublisher == null) return;
+
+        eventPublisher.publish("CRYPTO_KEY", normalizedId, IsoEventType.CRYPTO_KEY_ROTATED,
+                Map.of("keyId", normalizedId, "keyLengthBytes", keyLengthBytes)
+        );
     }
 }

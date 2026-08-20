@@ -62,10 +62,7 @@ public final class IsoPinBlockEngine {
      * @return clear numeric PIN string
      */
     public static String decodeClearPinBlock(String clearHexBlock, String pan, PinBlockFormat format) {
-        if (clearHexBlock == null || clearHexBlock.length() != format.getBlockSizeHexChars()) {
-            throw new IllegalArgumentException("Invalid clear PIN block length for %s: expected %d hex chars"
-                    .formatted(format, format.getBlockSizeHexChars()));
-        }
+        validateClearBlockLength(clearHexBlock, format);
 
         return switch (format) {
             case FORMAT_0 -> decodeFormat0(clearHexBlock, pan);
@@ -73,6 +70,13 @@ public final class IsoPinBlockEngine {
             case FORMAT_3 -> decodeFormat3(clearHexBlock, pan);
             case FORMAT_4 -> decodeFormat4(clearHexBlock, pan);
         };
+    }
+
+    private static void validateClearBlockLength(String clearHexBlock, PinBlockFormat format) {
+        if (clearHexBlock == null || clearHexBlock.length() != format.getBlockSizeHexChars()) {
+            throw new IllegalArgumentException("Invalid clear PIN block length for %s: expected %d hex chars"
+                    .formatted(format, format.getBlockSizeHexChars()));
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -91,14 +95,7 @@ public final class IsoPinBlockEngine {
     public static String encryptPin(String pin, String pan, PinBlockFormat format, byte[] workingKey) {
         String clearBlock = encodeClearPinBlock(pin, pan, format);
         byte[] clearBytes = CryptoUtils.hexToBytes(clearBlock);
-
-        byte[] encryptedBytes;
-        if (format == PinBlockFormat.FORMAT_4) {
-            encryptedBytes = CryptoUtils.aesEncryptEcb(clearBytes, workingKey);
-        } else {
-            encryptedBytes = CryptoUtils.desEncryptEcb(clearBytes, workingKey);
-        }
-
+        byte[] encryptedBytes = cipherEcb(clearBytes, workingKey, format, true);
         return CryptoUtils.bytesToHex(encryptedBytes);
     }
 
@@ -111,18 +108,28 @@ public final class IsoPinBlockEngine {
      * @param workingKey        decryption key
      * @return plaintext PIN
      */
-    public static String decryptPin(String encryptedHexBlock, String pan, PinBlockFormat format, byte[] workingKey) {
+    public static String decryptPin(
+            String encryptedHexBlock,
+            String pan,
+            PinBlockFormat format,
+            byte[] workingKey
+    ) {
         byte[] cipherBytes = CryptoUtils.hexToBytes(encryptedHexBlock);
-
-        byte[] clearBytes;
-        if (format == PinBlockFormat.FORMAT_4) {
-            clearBytes = CryptoUtils.aesDecryptEcb(cipherBytes, workingKey);
-        } else {
-            clearBytes = CryptoUtils.desDecryptEcb(cipherBytes, workingKey);
-        }
-
+        byte[] clearBytes = cipherEcb(cipherBytes, workingKey, format, false);
         String clearHex = CryptoUtils.bytesToHex(clearBytes);
         return decodeClearPinBlock(clearHex, pan, format);
+    }
+
+    /**
+     * Dispatches to AES or DES/3DES ECB per format — Format 4 (AES-128 block) uses AES,
+     * every other format uses the legacy 8-byte DES/3DES block cipher.
+     */
+    private static byte[] cipherEcb(byte[] data, byte[] key, PinBlockFormat format, boolean encrypt) {
+        boolean useAes = format == PinBlockFormat.FORMAT_4;
+        if (useAes) {
+            return encrypt ? CryptoUtils.aesEncryptEcb(data, key) : CryptoUtils.aesDecryptEcb(data, key);
+        }
+        return encrypt ? CryptoUtils.desEncryptEcb(data, key) : CryptoUtils.desDecryptEcb(data, key);
     }
 
     /**
@@ -163,131 +170,145 @@ public final class IsoPinBlockEngine {
 
     private static String encodeFormat0(String pin, String pan) {
         // PIN Field: 0 + L + PIN + F...F (16 hex chars)
-        String pinFieldHex = String.format("0%X%s", pin.length(), pin);
-        pinFieldHex = padRight(pinFieldHex, 16, 'F');
-
+        String pinFieldHex = padRight(pinFieldPrefix(0, pin), 16, 'F');
         // PAN Field: 0000 + 12 rightmost digits of PAN excluding the check digit (16 hex chars)
         String panFieldHex = buildPanField(pan);
-
-        byte[] pinBytes = CryptoUtils.hexToBytes(pinFieldHex);
-        byte[] panBytes = CryptoUtils.hexToBytes(panFieldHex);
-
-        byte[] blockBytes = CryptoUtils.xor(pinBytes, panBytes);
-        return CryptoUtils.bytesToHex(blockBytes);
+        return xorHexToHex(pinFieldHex, panFieldHex);
     }
 
     private static String decodeFormat0(String hexBlock, String pan) {
-        byte[] blockBytes = CryptoUtils.hexToBytes(hexBlock);
-        byte[] panBytes = CryptoUtils.hexToBytes(buildPanField(pan));
-
-        byte[] pinBytes = CryptoUtils.xor(blockBytes, panBytes);
-        String pinFieldHex = CryptoUtils.bytesToHex(pinBytes);
-
-        if (pinFieldHex.charAt(0) != '0') {
-            throw new IllegalArgumentException("Invalid Format 0 PIN block: header digit is not '0'");
-        }
-
-        int pinLength = Character.digit(pinFieldHex.charAt(1), 16);
-        if (pinLength < 4 || pinLength > 12) {
-            throw new IllegalArgumentException("Invalid Format 0 PIN length indicator: " + pinLength);
-        }
-
-        return pinFieldHex.substring(2, 2 + pinLength);
+        return decodeXorWithPan(
+                hexBlock,
+                pan,
+                '0',
+                "Format 0"
+        );
     }
 
     private static String encodeFormat1(String pin) {
         // Format 1: 1 + L + PIN + Random Pad (16 hex chars)
-        String prefix = String.format("1%X%s", pin.length(), pin);
-        int padLength = 16 - prefix.length();
-        String randomPad = CryptoUtils.generateRandomHex(padLength);
-        return prefix + randomPad;
+        return appendRandomPad(pinFieldPrefix(1, pin));
     }
 
     private static String decodeFormat1(String hexBlock) {
-        if (hexBlock.charAt(0) != '1') {
-            throw new IllegalArgumentException("Invalid Format 1 PIN block: header digit is not '1'");
-        }
-        int pinLength = Character.digit(hexBlock.charAt(1), 16);
-        if (pinLength < 4 || pinLength > 12) {
-            throw new IllegalArgumentException("Invalid Format 1 PIN length indicator: " + pinLength);
-        }
-        return hexBlock.substring(2, 2 + pinLength);
+        return extractPinFromField(
+                hexBlock,
+                '1',
+                "Format 1",
+                true
+        );
     }
 
     private static String encodeFormat3(String pin, String pan) {
         // Format 3: (3 + L + PIN + Random Pad) XOR (0000 + PAN[3..14])
-        String prefix = String.format("3%X%s", pin.length(), pin);
-        int padLength = 16 - prefix.length();
-        String randomPad = CryptoUtils.generateRandomHex(padLength);
-        String pinFieldHex = prefix + randomPad;
-
+        String pinFieldHex = appendRandomPad(pinFieldPrefix(3, pin));
         String panFieldHex = buildPanField(pan);
-
-        byte[] pinBytes = CryptoUtils.hexToBytes(pinFieldHex);
-        byte[] panBytes = CryptoUtils.hexToBytes(panFieldHex);
-
-        byte[] blockBytes = CryptoUtils.xor(pinBytes, panBytes);
-        return CryptoUtils.bytesToHex(blockBytes);
+        return xorHexToHex(pinFieldHex, panFieldHex);
     }
 
     private static String decodeFormat3(String hexBlock, String pan) {
-        byte[] blockBytes = CryptoUtils.hexToBytes(hexBlock);
-        byte[] panBytes = CryptoUtils.hexToBytes(buildPanField(pan));
-
-        byte[] pinBytes = CryptoUtils.xor(blockBytes, panBytes);
-        String pinFieldHex = CryptoUtils.bytesToHex(pinBytes);
-
-        if (pinFieldHex.charAt(0) != '3') {
-            throw new IllegalArgumentException("Invalid Format 3 PIN block: header digit is not '3'");
-        }
-
-        int pinLength = Character.digit(pinFieldHex.charAt(1), 16);
-        if (pinLength < 4 || pinLength > 12) {
-            throw new IllegalArgumentException("Invalid Format 3 PIN length indicator: " + pinLength);
-        }
-
-        return pinFieldHex.substring(2, 2 + pinLength);
+        return decodeXorWithPan(
+                hexBlock,
+                pan,
+                '3',
+                "Format 3"
+        );
     }
 
     private static String encodeFormat4(String pin, String pan) {
         // Format 4 (AES 16-byte block):
         // PIN Field: 4 + L + PIN + A...A (32 hex chars)
-        String pinFieldHex = String.format("4%X%s", pin.length(), pin);
-        pinFieldHex = padRight(pinFieldHex, 32, 'A');
-
+        String pinFieldHex = padRight(pinFieldPrefix(4, pin), 32, 'A');
         // PAN Field: PAN length (2 hex digits) + PAN + 0...0 (32 hex chars)
-        String cleanPan = extractCleanPan(pan);
-        String panFieldHex = String.format("%02X%s", cleanPan.length(), cleanPan);
-        panFieldHex = padRight(panFieldHex, 32, '0');
-
-        byte[] pinBytes = CryptoUtils.hexToBytes(pinFieldHex);
-        byte[] panBytes = CryptoUtils.hexToBytes(panFieldHex);
-
-        byte[] blockBytes = CryptoUtils.xor(pinBytes, panBytes);
-        return CryptoUtils.bytesToHex(blockBytes);
+        String panFieldHex = buildAesPanField(pan);
+        return xorHexToHex(pinFieldHex, panFieldHex);
     }
 
     private static String decodeFormat4(String hexBlock, String pan) {
         byte[] blockBytes = CryptoUtils.hexToBytes(hexBlock);
+        byte[] panBytes = CryptoUtils.hexToBytes(buildAesPanField(pan));
+        String pinFieldHex = CryptoUtils.bytesToHex(CryptoUtils.xor(blockBytes, panBytes));
+        // Format 4 has no defined lower/upper PIN-length validity range in the original logic
+        return extractPinFromField(
+                pinFieldHex,
+                '4',
+                "Format 4",
+                false
+        );
+    }
 
-        String cleanPan = extractCleanPan(pan);
-        String panFieldHex = String.format("%02X%s", cleanPan.length(), cleanPan);
-        panFieldHex = padRight(panFieldHex, 32, '0');
-        byte[] panBytes = CryptoUtils.hexToBytes(panFieldHex);
+    // ─────────────────────────────────────────────────────────────────────────
+    // Shared Encode/Decode Helpers
+    // ─────────────────────────────────────────────────────────────────────────
 
-        byte[] pinBytes = CryptoUtils.xor(blockBytes, panBytes);
-        String pinFieldHex = CryptoUtils.bytesToHex(pinBytes);
+    /**
+     * Builds the "{@code formatDigit + lengthNibble + pin}" prefix shared by every PIN field format.
+     */
+    private static String pinFieldPrefix(int formatDigit, String pin) {
+        return "%X%X%s".formatted(formatDigit, pin.length(), pin);
+    }
 
-        if (pinFieldHex.charAt(0) != '4') {
-            throw new IllegalArgumentException("Invalid Format 4 PIN block: header digit is not '4'");
+    /**
+     * Appends pseudo-random hex padding to fill the field out to {@code totalHexLen} characters.
+     */
+    private static String appendRandomPad(String prefix) {
+        String randomPad = CryptoUtils.generateRandomHex(16 - prefix.length());
+        return prefix + randomPad;
+    }
+
+    /**
+     * XORs two equal-length hex strings and returns the result as hex — the core operation
+     * shared by every PAN-bound format (0, 3, 4) on both encode and decode paths.
+     */
+    private static String xorHexToHex(String hexA, String hexB) {
+        byte[] result = CryptoUtils.xor(CryptoUtils.hexToBytes(hexA), CryptoUtils.hexToBytes(hexB));
+        return CryptoUtils.bytesToHex(result);
+    }
+
+    /**
+     * Shared decode path for Format 0 and Format 3: XOR the block against the PAN field,
+     * then extract the PIN, validating the header digit and length indicator.
+     */
+    private static String decodeXorWithPan(
+            String hexBlock,
+            String pan,
+            char expectedHeader,
+            String formatName
+    ) {
+        String pinFieldHex = xorHexToHex(hexBlock, buildPanField(pan));
+        return extractPinFromField(pinFieldHex, expectedHeader, formatName, true);
+    }
+
+    /**
+     * Validates the header digit and length indicator of a decoded PIN field, then extracts the PIN.
+     *
+     * @param enforceLengthRange whether to reject length indicators outside 4–12
+     *                           (Format 4's original logic does not enforce this range)
+     */
+    private static String extractPinFromField(
+            String pinFieldHex,
+            char expectedHeader,
+            String formatName,
+            boolean enforceLengthRange
+    ) {
+        if (pinFieldHex.charAt(0) != expectedHeader) {
+            throw new IllegalArgumentException("Invalid %s PIN block: header digit is not '%s'"
+                    .formatted(formatName, expectedHeader)
+            );
         }
 
         int pinLength = Character.digit(pinFieldHex.charAt(1), 16);
+        if (enforceLengthRange && (pinLength < 4 || pinLength > 12)) {
+            throw new IllegalArgumentException("Invalid %s PIN length indicator: %d"
+                    .formatted(formatName, pinLength)
+            );
+        }
+
         return pinFieldHex.substring(2, 2 + pinLength);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Helper Methods
+    // PAN Field Helpers
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
@@ -298,11 +319,22 @@ public final class IsoPinBlockEngine {
     public static String buildPanField(String pan) {
         String cleanPan = extractCleanPan(pan);
         if (cleanPan.length() < 13) {
-            throw new IllegalArgumentException("PAN must have at least 13 digits for ISO 9564 formatting: " + pan);
+            throw new IllegalArgumentException("PAN must have at least 13 digits for ISO 9564 formatting: %s"
+                    .formatted(pan)
+            );
         }
         // Take 12 digits prior to the last digit (check digit)
         String pan12 = cleanPan.substring(cleanPan.length() - 13, cleanPan.length() - 1);
         return "0000" + pan12;
+    }
+
+    /**
+     * Builds the Format 4 (AES) 32-hex character PAN field: PAN length (2 hex digits) + PAN + zero padding.
+     */
+    private static String buildAesPanField(String pan) {
+        String cleanPan = extractCleanPan(pan);
+        String panFieldHex = "%02X%s".formatted(cleanPan.length(), cleanPan);
+        return padRight(panFieldHex, 32, '0');
     }
 
     private static String extractCleanPan(String pan) {

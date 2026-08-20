@@ -1,5 +1,7 @@
 package com.dean.iso8583.web;
 
+import com.dean.iso8583.core.clearing.dto.ClearingBatch;
+import com.dean.iso8583.core.clearing.dto.ClearingRecord;
 import com.dean.iso8583.core.dto.IsoFieldDef;
 import com.dean.iso8583.core.dto.IsoSpecDefinition;
 import com.dean.iso8583.core.echo.dto.ChannelStatusReport;
@@ -171,7 +173,7 @@ public class Iso8583Controller {
      * with interchange fee calculation and reconciliation control totals.</p>
      */
     @PostMapping("/clearing/batch/generate")
-    public ResponseEntity<com.dean.iso8583.core.clearing.ClearingBatch> generateClearingBatch(
+    public ResponseEntity<ClearingBatch> generateClearingBatch(
             @RequestBody(required = false) ClearingBatchRequest request
     ) {
         return ResponseEntity.ok(iso8583Service.generateClearingBatch(request));
@@ -183,7 +185,7 @@ public class Iso8583Controller {
      * <p>Files a 1440 Chargeback dispute against a previously authorized or settled transaction.</p>
      */
     @PostMapping("/clearing/chargeback")
-    public ResponseEntity<com.dean.iso8583.core.clearing.ClearingRecord> fileChargeback(
+    public ResponseEntity<ClearingRecord> fileChargeback(
             @RequestBody ChargebackRequest request
     ) {
         return ResponseEntity.ok(iso8583Service.fileChargeback(request));
@@ -195,7 +197,7 @@ public class Iso8583Controller {
      * <p>Parses an incoming raw batch clearing file string (Mastercard IPM or Visa BASE II format).</p>
      */
     @PostMapping("/clearing/batch/parse")
-    public ResponseEntity<com.dean.iso8583.core.clearing.ClearingBatch> parseClearingBatch(
+    public ResponseEntity<ClearingBatch> parseClearingBatch(
             @RequestBody ClearingParseRequest request
     ) {
         return ResponseEntity.ok(iso8583Service.parseClearingBatch(request));
@@ -207,7 +209,7 @@ public class Iso8583Controller {
      * <p>Returns all generated and archived clearing batches.</p>
      */
     @GetMapping("/clearing/batches")
-    public ResponseEntity<java.util.Collection<com.dean.iso8583.core.clearing.ClearingBatch>> getClearingBatches() {
+    public ResponseEntity<java.util.Collection<ClearingBatch>> getClearingBatches() {
         return ResponseEntity.ok(iso8583Service.getClearingBatches());
     }
 
@@ -217,7 +219,7 @@ public class Iso8583Controller {
      * <p>Returns all filed chargeback dispute records.</p>
      */
     @GetMapping("/clearing/chargebacks")
-    public ResponseEntity<java.util.Collection<com.dean.iso8583.core.clearing.ClearingRecord>> getChargebacks() {
+    public ResponseEntity<java.util.Collection<ClearingRecord>> getChargebacks() {
         return ResponseEntity.ok(iso8583Service.getChargebacks());
     }
 

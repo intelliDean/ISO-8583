@@ -40,7 +40,12 @@ public record IsoOutboxEvent(
     /**
      * Factory helper to create a fresh pending outbox event.
      */
-    public static IsoOutboxEvent of(String aggregateType, String aggregateId, IsoEventType eventType, String payloadJson) {
+    public static IsoOutboxEvent of(
+            String aggregateType,
+            String aggregateId,
+            IsoEventType eventType,
+            String payloadJson
+    ) {
         return new IsoOutboxEvent(
                 UUID.randomUUID().toString(),
                 aggregateType,
