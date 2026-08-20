@@ -1,0 +1,11 @@
+target/
+.git/
+.gitignore
+.idea/
+*.iml
+.DS_Store
+.mvn/
+client/__pycache__/
+client/.pytest_cache/
+*.log
+scratch/

@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -22,18 +23,21 @@ import java.util.function.Supplier;
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class IsoMetrics {
 
     private final MeterRegistry registry;
 
-    public IsoMetrics(MeterRegistry registry) {
-        this.registry = registry;
-    }
-
     /**
      * Records a processed ISO 8583 message and its execution duration.
      */
-    public void recordTransaction(String mti, String responseCode, String network, long durationNanos, boolean success) {
+    public void recordTransaction(
+            String mti,
+            String responseCode,
+            String network,
+            long durationNanos,
+            boolean success
+    ) {
         String status = !success ? "FAILURE" : ("00".equals(responseCode) ? "APPROVED" : "DECLINED");
         String safeMti = (mti != null && !mti.isBlank()) ? mti : "UNKNOWN";
         String safeRc = (responseCode != null && !responseCode.isBlank()) ? responseCode : "NA";
@@ -136,7 +140,10 @@ public class IsoMetrics {
     /**
      * Registers dynamic gauges monitoring active transaction state store and pending outbox queue depth.
      */
-    public void registerStateGauges(Supplier<Number> transactionCountSupplier, Supplier<Number> pendingOutboxSupplier) {
+    public void registerStateGauges(
+            Supplier<Number> transactionCountSupplier,
+            Supplier<Number> pendingOutboxSupplier
+    ) {
         Gauge.builder("iso.transactions.active.count", transactionCountSupplier)
                 .description("Current number of tracked transactions in the state store")
                 .register(registry);
