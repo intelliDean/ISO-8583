@@ -164,6 +164,15 @@ def tab2_message_builder(client: ApiClient) -> str:
     return raw_payload
 
 
+def tab3_spec_registry(client: ApiClient) -> None:
+    print("\n[TAB 3: BITMAP EXPLORER & SPEC REGISTRY] Testing Dynamic Dialect Definitions...")
+    specs = client.get("/api/iso/specs")
+    spec_ids = [s.get("id") for s in specs] if isinstance(specs, list) else list(specs.keys())
+    print(f"  ✓ Registered Specifications: {', '.join(spec_ids)} ({len(spec_ids)} Dialects Loaded)")
+    for required in ("iso8583-1987", "visa-sms", "mastercard-ipm"):
+        assert any(required in sid for sid in spec_ids), f"Missing required specification: {required}"
+
+
 def tab4_emv_parser(client: ApiClient) -> None:
     print("\n[TAB 4: EMV BER-TLV EXPLORER] Decoding DE 55 Chip Stream & Fraud Signals...")
     emv_sample = "9F2608A1B2C3D4E5F6079F9F3602001E9F10120110A000002A0000000000000000000000FF9C010082020100"
@@ -227,6 +236,12 @@ def tab6_clearing_settlement(client: ApiClient) -> None:
     print(f"  ✓ Filed 1440 Chargeback: ID={cb_res.get('recordId')} STAN={cb_res.get('stan')} "
           f"Reason={cb_res.get('disputeReasonCode')}")
 
+    # Audit ledger verification
+    txns = client.get("/api/iso/transactions")
+    print(f"  ✓ Live Transaction Ledger: {len(txns)} record(s) persisted in state store")
+    batches = client.get("/api/iso/clearing/batches")
+    print(f"  ✓ Clearing Batch Archive: {len(batches)} batch record(s) archived")
+
 
 def tab7_network_telemetry(client: ApiClient) -> None:
     print("\n[TAB 7: NETWORK TELEMETRY & RESILIENCY] Testing 0800/0810 Echo & Outbox Stream...")
@@ -249,7 +264,6 @@ def tab7_network_telemetry(client: ApiClient) -> None:
 # --------------------------------------------------------------------------
 
 def build_tabs(client: ApiClient) -> "list[tuple[str, Callable[[], None]]]":
-    # Tab 2's output (raw_payload) feeds Tab 5, so it's captured via closure state.
     state: Dict[str, str] = {}
 
     def _tab2():
@@ -263,6 +277,7 @@ def build_tabs(client: ApiClient) -> "list[tuple[str, Callable[[], None]]]":
     return [
         ("Tab 1: Message Inspector", lambda: tab1_message_inspector(client)),
         ("Tab 2: Message Builder + TCP Sim", _tab2),
+        ("Tab 3: Spec Registry", lambda: tab3_spec_registry(client)),
         ("Tab 4: EMV BER-TLV Parser", lambda: tab4_emv_parser(client)),
         ("Tab 5: Crypto Lab", _tab5),
         ("Tab 6: Clearing & Settlement", lambda: tab6_clearing_settlement(client)),
@@ -274,14 +289,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="E2E test suite for the ISO 8583 payment engine API")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
-    parser.add_argument("--tab", action="append", help="Run only tabs whose name contains this substring "
-                                                         "(repeatable). Default: run all.")
+    parser.add_argument("--tab", action="append", help="Run only tabs whose name contains this substring (repeatable)")
+    parser.add_argument("--json", action="store_true", help="Output machine-readable JSON report")
     args = parser.parse_args(argv)
 
-    print("=" * 80)
-    print("🚀 AUTOMATED E2E BROWSER & PROTOCOL TEST SUITE FOR ISO 8583 ENGINE")
-    print(f"   Target: {args.base_url}")
-    print("=" * 80)
+    if not args.json:
+        print("=" * 80)
+        print("🚀 AUTOMATED E2E BROWSER & PROTOCOL TEST SUITE FOR ISO 8583 ENGINE")
+        print(f"   Target: {args.base_url}")
+        print("=" * 80)
 
     client = ApiClient(args.base_url, timeout=args.timeout)
     tabs = build_tabs(client)
@@ -296,14 +312,25 @@ def main(argv: Optional[List[str]] = None) -> int:
     for name, fn in tabs:
         run_tab(report, name, fn)
 
-    print(report.summary())
-
-    if report.all_passed:
-        print("\n🎉 ALL SELECTED TABS VERIFIED (100% OPERATIONAL & HEALTHY)")
-        return 0
+    if args.json:
+        payload = {
+            "allPassed": report.all_passed,
+            "passedCount": sum(r.passed for r in report.results),
+            "totalCount": len(report.results),
+            "results": [
+                {"name": r.name, "passed": r.passed, "elapsedMs": round(r.elapsed_ms, 2), "error": r.error}
+                for r in report.results
+            ]
+        }
+        print(json.dumps(payload, indent=2))
     else:
-        print("\n⚠️  ONE OR MORE TABS FAILED — see summary above")
-        return 1
+        print(report.summary())
+        if report.all_passed:
+            print("\n🎉 ALL SELECTED TABS VERIFIED (100% OPERATIONAL & HEALTHY)")
+        else:
+            print("\n⚠️  ONE OR MORE TABS FAILED — see summary above")
+
+    return 0 if report.all_passed else 1
 
 
 if __name__ == "__main__":
