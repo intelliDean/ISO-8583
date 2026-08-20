@@ -1,5 +1,7 @@
 package com.dean.iso8583.core.clearing;
 
+import lombok.Builder;
+
 import java.time.Instant;
 import java.util.List;
 
@@ -14,6 +16,7 @@ import java.util.List;
  *   <li>{@code netSettlementAmountIso}: final net settlement position to be transferred.</li>
  * </ul>
  */
+@Builder
 public record ClearingBatch(
         String batchId,
         String settlementDate,

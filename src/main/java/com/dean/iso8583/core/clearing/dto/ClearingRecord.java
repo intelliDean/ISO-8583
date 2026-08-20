@@ -1,5 +1,7 @@
 package com.dean.iso8583.core.clearing;
 
+import lombok.Builder;
+
 import java.time.Instant;
 
 /**
@@ -13,6 +15,7 @@ import java.time.Instant;
  *   <li>{@code disputeReasonCode}: Required on 1440 Chargebacks (e.g. "4837" = Fraud / No Cardholder Authorization).</li>
  * </ul>
  */
+@Builder
 public record ClearingRecord(
         String recordId,
         ClearingRecordType recordType,
@@ -45,24 +48,24 @@ public record ClearingRecord(
             String merchantId,
             String rawPackedIso
     ) {
-        return new ClearingRecord(
-                recordId,
-                ClearingRecordType.FIRST_PRESENTMENT,
-                maskedPan,
-                "000000",
-                amountIso,
-                interchangeFeeIso,
-                settlementAmountIso,
-                currencyCode,
-                rrn,
-                authCode,
-                stan,
-                terminalId,
-                merchantId,
-                null,
-                rawPackedIso,
-                Instant.now()
-        );
+        return ClearingRecord.builder()
+                .recordId(recordId)
+                .recordType(ClearingRecordType.FIRST_PRESENTMENT)
+                .maskedPan(maskedPan)
+                .processingCode("000000")
+                .amountIso(amountIso)
+                .interchangeFeeIso(interchangeFeeIso)
+                .settlementAmountIso(settlementAmountIso)
+                .currencyCode(currencyCode)
+                .rrn(rrn)
+                .authCode(authCode)
+                .stan(stan)
+                .terminalId(terminalId)
+                .merchantId(merchantId)
+                .disputeReasonCode(null)
+                .rawPackedIso(rawPackedIso)
+                .timestamp(Instant.now())
+                .build();
     }
 
     public static ClearingRecord createChargeback(
@@ -76,23 +79,23 @@ public record ClearingRecord(
             String disputeReasonCode,
             String rawPackedIso
     ) {
-        return new ClearingRecord(
-                recordId,
-                ClearingRecordType.CHARGEBACK,
-                maskedPan,
-                "000000",
-                amountIso,
-                "000000000000",
-                amountIso,
-                currencyCode,
-                rrn,
-                authCode,
-                stan,
-                null,
-                null,
-                disputeReasonCode,
-                rawPackedIso,
-                Instant.now()
-        );
+        return ClearingRecord.builder()
+                .recordId(recordId)
+                .recordType(ClearingRecordType.CHARGEBACK)
+                .maskedPan(maskedPan)
+                .processingCode("000000")
+                .amountIso(amountIso)
+                .interchangeFeeIso("000000000000")
+                .settlementAmountIso(amountIso)
+                .currencyCode(currencyCode)
+                .rrn(rrn)
+                .authCode(authCode)
+                .stan(stan)
+                .terminalId(null)
+                .merchantId(null)
+                .disputeReasonCode(disputeReasonCode)
+                .rawPackedIso(rawPackedIso)
+                .timestamp(Instant.now())
+                .build();
     }
 }

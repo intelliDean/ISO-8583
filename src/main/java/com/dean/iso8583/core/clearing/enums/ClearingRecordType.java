@@ -1,4 +1,7 @@
-package com.dean.iso8583.core.clearing;
+package com.dean.iso8583.core.clearing.dto.enums;
+
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 
 /**
  * Developer Note:
@@ -18,6 +21,8 @@ package com.dean.iso8583.core.clearing;
  *   [Batch Stage 3: 1240 Second Presentment] ────► Acquirer re-presents with evidence
  * </pre>
  */
+@Getter
+@AllArgsConstructor
 public enum ClearingRecordType {
 
     /** 1240 – First Presentment (Acquirer submits captured transaction for settlement) */
@@ -43,17 +48,4 @@ public enum ClearingRecordType {
 
     private final String mti;
     private final String description;
-
-    ClearingRecordType(String mti, String description) {
-        this.mti = mti;
-        this.description = description;
-    }
-
-    public String getMti() {
-        return mti;
-    }
-
-    public String getDescription() {
-        return description;
-    }
 }
