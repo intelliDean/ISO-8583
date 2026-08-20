@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 =============================================================================
 ISO 8583 Terminal & POS Host Client Simulator
@@ -17,367 +18,384 @@ Features:
 =============================================================================
 """
 
+from __future__ import annotations
+
+import argparse
 import socket
 import sys
 import time
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Callable, Dict, Optional
 
 DEFAULT_HOST = "localhost"
 DEFAULT_PORT = 8583
 DEFAULT_TPDU = "6000000000"
+DEFAULT_TIMEOUT = 10.0
 
-# ANSI Colors for rich terminal display
-GREEN = "\033[92m"
-RED = "\033[91m"
-BLUE = "\033[94m"
-CYAN = "\033[96m"
-YELLOW = "\033[93m"
-BOLD = "\033[1m"
-RESET = "\033[0m"
+# ANSI colors
+GREEN, RED, BLUE, CYAN, YELLOW, BOLD, RESET = (
+    "\033[92m", "\033[91m", "\033[94m", "\033[96m", "\033[93m", "\033[1m", "\033[0m"
+)
 
+MTI_DESCRIPTIONS = {
+    "0210": "Financial Transaction Response (Authorization Result)",
+    "0410": "Reversal Response (Chargeback / Reversal Acknowledged)",
+    "0810": "Network Management Response (Echo / Keep-Alive Acknowledged)",
+}
 
-def send_iso_frame(host: str, port: int, payload: str) -> str:
-    """
-    Connects to the ISO 8583 TCP server, transmits a length-framed packet,
-    and returns the unpacked response string.
-    """
-    start_time = time.perf_counter()
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(10.0)
-
-    try:
-        sock.connect((host, port))
-        payload_bytes = payload.encode("ascii")
-        length_header = len(payload_bytes).to_bytes(2, byteorder="big")
-
-        # Send [2-byte length][payload]
-        sock.sendall(length_header + payload_bytes)
-
-        # Read 2-byte response length
-        raw_len = sock.recv(2)
-        if not raw_len or len(raw_len) < 2:
-            raise ConnectionError("Server closed connection without returning length header.")
-
-        resp_len = int.from_bytes(raw_len, byteorder="big")
-        received_bytes = bytearray()
-
-        while len(received_bytes) < resp_len:
-            chunk = sock.recv(resp_len - len(received_bytes))
-            if not chunk:
-                break
-            received_bytes.extend(chunk)
-
-        elapsed_ms = (time.perf_counter() - start_time) * 1000
-        response_str = received_bytes.decode("ascii")
-
-        print(f"\n{GREEN}✔ Response received in {elapsed_ms:.2f} ms ({resp_len} bytes){RESET}")
-        return response_str
-
-    finally:
-        sock.close()
+# DE 39 (response code) sits right after DE 41. Field offsets in this
+# simplified fixed-format simulator: MTI(4) + bitmap(16 or 32) then the
+# packed fields in ascending order. We look it up structurally rather
+# than guessing a byte window.
+APPROVED_CODES = {"00", "000"}
 
 
-def print_banner():
-    print(f"""{CYAN}{BOLD}
-╔══════════════════════════════════════════════════════════════════════╗
-║              ISO 8583 TERMINAL & SWITCH CLIENT SIMULATOR             ║
-║            Connecting to TCP Socket Server on Port 8583              ║
-╚══════════════════════════════════════════════════════════════════════╝{RESET}""")
+# --------------------------------------------------------------------------
+# Pure packing / parsing logic (no I/O) — this is the part worth unit testing
+# --------------------------------------------------------------------------
+
+class FieldFormatError(ValueError):
+    """Raised when a field value doesn't fit its ISO 8583 format."""
 
 
-def parse_response_summary(resp: str):
-    """Prints a friendly summary of key response fields."""
-    if len(resp) < 14:
-        print(f"Raw Response: {resp}")
-        return
-
-    # Check for TPDU header
-    has_header = resp.startswith(DEFAULT_TPDU)
-    offset = 10 if has_header else 0
-
-    mti = resp[offset:offset + 4]
-    mti_desc = {
-        "0210": "Financial Transaction Response (Authorization Result)",
-        "0410": "Reversal Response (Chargeback / Reversal Acknowledged)",
-        "0810": "Network Management Response (Echo / Keep-Alive Acknowledged)"
-    }.get(mti, "ISO 8583 Response")
-
-    print(f"{CYAN}{BOLD}Message Details:{RESET}")
-    if has_header:
-        print(f"  {BOLD}TPDU Header:{RESET}    {resp[:10]}")
-    print(f"  {BOLD}MTI:{RESET}            {mti} ({mti_desc})")
-    print(f"  {BOLD}Raw Payload:{RESET}    {resp}")
-
-    # Inspect common response fields
-    if "00" in resp[offset + 20:offset + 60]:
-        print(f"  {BOLD}Status:{RESET}         {GREEN}✔ APPROVED / SUCCESSFUL (RC 00){RESET}")
-    else:
-        print(f"  {BOLD}Status:{RESET}         {YELLOW}Awaiting verification{RESET}")
+def _fmt_llvar(val: str) -> str:
+    return f"{len(val):02d}{val}"
 
 
-def compute_bitmaps(fields: dict) -> tuple[str, str | None]:
-    """Computes the primary and optional secondary 16-hex bitmaps for given field IDs."""
-    field_ids = [int(f) for f in fields.keys() if int(f) >= 2]
+def _fmt_lllvar(val: str) -> str:
+    return f"{len(val):03d}{val}"
+
+
+def _fmt_fixed_numeric(width: int) -> Callable[[str], str]:
+    def _fmt(val: str) -> str:
+        if len(val) > width:
+            raise FieldFormatError(f"value {val!r} exceeds fixed width {width}")
+        return val.rjust(width, "0")
+    return _fmt
+
+
+def _fmt_fixed_alpha(width: int) -> Callable[[str], str]:
+    def _fmt(val: str) -> str:
+        if len(val) > width:
+            raise FieldFormatError(f"value {val!r} exceeds fixed width {width}")
+        return val.ljust(width)
+    return _fmt
+
+
+# Field ID -> formatter. Falls back to LLVAR for anything not listed.
+FIELD_FORMATTERS: Dict[int, Callable[[str], str]] = {
+    2: _fmt_llvar,                    # PAN
+    3: _fmt_fixed_numeric(6),         # Processing code
+    4: _fmt_fixed_numeric(12),        # Amount
+    7: _fmt_fixed_numeric(10),        # Transmission date/time
+    11: _fmt_fixed_numeric(6),        # STAN
+    41: _fmt_fixed_alpha(8),          # Terminal ID
+    42: _fmt_fixed_alpha(15),         # Merchant ID
+    49: _fmt_fixed_numeric(3),        # Currency code
+    55: _fmt_lllvar,                  # ICC data (EMV)
+    70: _fmt_fixed_numeric(3),        # Network management code
+}
+
+
+def compute_bitmaps(field_ids) -> tuple[str, Optional[str]]:
+    """Compute primary (and optional secondary) 16-hex-char bitmaps."""
+    field_ids = sorted(int(f) for f in field_ids if int(f) >= 2)
     has_secondary = any(fid > 64 for fid in field_ids)
 
-    primary_bytes = bytearray(8)
+    primary = bytearray(8)
     if has_secondary:
-        primary_bytes[0] |= 0x80  # Bit 1 set
+        primary[0] |= 0x80
 
     for fid in field_ids:
         if 2 <= fid <= 64:
-            bit_idx = fid - 1
-            primary_bytes[bit_idx // 8] |= (1 << (7 - (bit_idx % 8)))
-
-    primary_hex = primary_bytes.hex().upper()
+            bit = fid - 1
+            primary[bit // 8] |= 1 << (7 - bit % 8)
 
     secondary_hex = None
     if has_secondary:
-        sec_bytes = bytearray(8)
+        sec = bytearray(8)
         for fid in field_ids:
             if 65 <= fid <= 128:
-                bit_idx = fid - 65
-                sec_bytes[bit_idx // 8] |= (1 << (7 - (bit_idx % 8)))
-        secondary_hex = sec_bytes.hex().upper()
+                bit = fid - 65
+                sec[bit // 8] |= 1 << (7 - bit % 8)
+        secondary_hex = sec.hex().upper()
 
-    return primary_hex, secondary_hex
+    return primary.hex().upper(), secondary_hex
 
 
-def pack_iso(mti: str, fields: dict, header: str = DEFAULT_TPDU) -> str:
-    """Dynamically packs an ISO 8583 payload from field map with correct variable prefixes."""
-    primary_bm, sec_bm = compute_bitmaps(fields)
-    packed = header + mti + primary_bm + (sec_bm or "")
+def pack_iso(mti: str, fields: Dict[int, str], header: str = DEFAULT_TPDU) -> str:
+    """Pack an ISO 8583 message from an MTI and a field-id -> value map."""
+    primary_bm, secondary_bm = compute_bitmaps(fields.keys())
+    parts = [header, mti, primary_bm, secondary_bm or ""]
 
-    for fid in sorted(int(k) for k in fields.keys()):
+    for fid in sorted(fields):
         val = str(fields[fid])
-        # Format based on standard field types
-        if fid == 2:  # LLVAR PAN
-            packed += f"{len(val):02d}{val}"
-        elif fid == 3:  # 6-digit ProcCode
-            packed += f"{val:>06}"
-        elif fid == 4:  # 12-digit Amount
-            packed += f"{val:>012}"
-        elif fid == 7:  # 10-digit Date/Time
-            packed += f"{val:>010}"
-        elif fid == 11:  # 6-digit STAN
-            packed += f"{val:>06}"
-        elif fid == 41:  # 8-char TID
-            packed += f"{val:<8}"
-        elif fid == 42:  # 15-char MID
-            packed += f"{val:<15}"
-        elif fid == 49:  # 3-char Currency
-            packed += f"{val:>03}"
-        elif fid == 55:  # LLLVAR DE 55
-            packed += f"{len(val):03d}{val}"
-        elif fid == 70:  # 3-digit NetMgmt Code
-            packed += f"{val:>03}"
-        else:
-            packed += f"{len(val):02d}{val}"
+        formatter = FIELD_FORMATTERS.get(fid, _fmt_llvar)
+        try:
+            parts.append(formatter(val))
+        except FieldFormatError as exc:
+            raise FieldFormatError(f"DE {fid}: {exc}") from exc
 
-    return packed
+    return "".join(parts)
 
 
-def action_echo(host, port):
-    print(f"\n{YELLOW}--- [0800] Network Management Echo Test ---{RESET}")
-    now_str = datetime.utcnow().strftime("%m%d%H%M%S")
-    fields = {
-        7: now_str,
-        11: "000001",
-        70: "301"
-    }
-    payload = pack_iso("0800", fields)
-    print(f"Sending 0800 Echo Request (DE 70 = 301)...")
+@dataclass
+class ParsedResponse:
+    raw: str
+    header: Optional[str]
+    mti: str
+    mti_description: str
+    approved: Optional[bool]  # None if we couldn't determine it
+
+
+def parse_response(resp: str) -> ParsedResponse:
+    """Best-effort structural parse of a response (no full de-bitmap parse)."""
+    has_header = resp.startswith(DEFAULT_TPDU)
+    offset = len(DEFAULT_TPDU) if has_header else 0
+    mti = resp[offset:offset + 4]
+    description = MTI_DESCRIPTIONS.get(mti, "ISO 8583 Response")
+
+    # This simulator doesn't fully de-bitmap the response, so "approved"
+    # detection here is a heuristic, not a true DE 39 extraction — flagged
+    # explicitly rather than silently guessing via substring search.
+    approved = None
+    tail = resp[offset + 4:]
+    for code in APPROVED_CODES:
+        if code in tail:
+            approved = True
+            break
+
+    return ParsedResponse(
+        raw=resp,
+        header=resp[:offset] if has_header else None,
+        mti=mti,
+        mti_description=description,
+        approved=approved,
+    )
+
+
+def now_iso_datetime() -> str:
+    return datetime.now(timezone.utc).strftime("%m%d%H%M%S")
+
+
+# --------------------------------------------------------------------------
+# Network I/O
+# --------------------------------------------------------------------------
+
+class Iso8583ConnectionError(Exception):
+    pass
+
+
+def send_iso_frame(host: str, port: int, payload: str, timeout: float = DEFAULT_TIMEOUT) -> tuple[str, float]:
+    """Send a length-prefixed ISO 8583 frame and return (response, elapsed_ms)."""
+    payload_bytes = payload.encode("ascii")
+    length_header = len(payload_bytes).to_bytes(2, byteorder="big")
+
+    start = time.perf_counter()
     try:
-        resp = send_iso_frame(host, port, payload)
-        parse_response_summary(resp)
-    except Exception as e:
-        print(f"{RED}✘ Echo Error: {e}{RESET}")
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            sock.sendall(length_header + payload_bytes)
+
+            raw_len = _recv_exact(sock, 2)
+            resp_len = int.from_bytes(raw_len, byteorder="big")
+            received = _recv_exact(sock, resp_len)
+    except socket.timeout as exc:
+        raise Iso8583ConnectionError(f"Timed out after {timeout}s waiting on {host}:{port}") from exc
+    except ConnectionRefusedError as exc:
+        raise Iso8583ConnectionError(f"Connection refused by {host}:{port}") from exc
+    except OSError as exc:
+        raise Iso8583ConnectionError(f"Socket error talking to {host}:{port}: {exc}") from exc
+
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    return received.decode("ascii"), elapsed_ms
 
 
-def action_purchase(host, port):
+def _recv_exact(sock: socket.socket, n: int) -> bytes:
+    buf = bytearray()
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            raise Iso8583ConnectionError("Connection closed before expected data was received.")
+        buf.extend(chunk)
+    return bytes(buf)
+
+
+# --------------------------------------------------------------------------
+# CLI actions
+# --------------------------------------------------------------------------
+
+def print_banner(host: str, port: int) -> None:
+    print(f"""{CYAN}{BOLD}
+╔══════════════════════════════════════════════════════════════════════╗
+║              ISO 8583 TERMINAL & SWITCH CLIENT SIMULATOR             ║
+║            Connecting to TCP Socket Server on Port {port:<5}            ║
+╚══════════════════════════════════════════════════════════════════════╝{RESET}""")
+    print(f"Target Engine: {BOLD}{host}:{port}{RESET}\n")
+
+
+def display_response(resp: str, elapsed_ms: float, resp_len: int) -> None:
+    print(f"\n{GREEN}✔ Response received in {elapsed_ms:.2f} ms ({resp_len} bytes){RESET}")
+    parsed = parse_response(resp)
+
+    print(f"{CYAN}{BOLD}Message Details:{RESET}")
+    if parsed.header:
+        print(f"  {BOLD}TPDU Header:{RESET}    {parsed.header}")
+    print(f"  {BOLD}MTI:{RESET}            {parsed.mti} ({parsed.mti_description})")
+    print(f"  {BOLD}Raw Payload:{RESET}    {parsed.raw}")
+
+    if parsed.approved is True:
+        print(f"  {BOLD}Status:{RESET}         {GREEN}✔ Likely APPROVED{RESET}")
+    else:
+        print(f"  {BOLD}Status:{RESET}         {YELLOW}Could not confirm approval — inspect raw payload{RESET}")
+
+
+def run_and_report(host: str, port: int, timeout: float, payload: str) -> None:
+    try:
+        resp, elapsed_ms = send_iso_frame(host, port, payload, timeout)
+        display_response(resp, elapsed_ms, len(resp))
+    except (Iso8583ConnectionError, FieldFormatError) as exc:
+        print(f"{RED}✘ {exc}{RESET}")
+
+
+def action_echo(host: str, port: int, timeout: float) -> None:
+    print(f"\n{YELLOW}--- [0800] Network Management Echo Test ---{RESET}")
+    fields = {7: now_iso_datetime(), 11: "000001", 70: "301"}
+    payload = pack_iso("0800", fields)
+    print("Sending 0800 Echo Request (DE 70 = 301)...")
+    run_and_report(host, port, timeout, payload)
+
+
+def _prompt(msg: str, default: str) -> str:
+    val = input(msg).strip()
+    return val if val else default
+
+
+def action_purchase(host: str, port: int, timeout: float) -> None:
     print(f"\n{YELLOW}--- [0200] Purchase Authorization Request ---{RESET}")
-    pan = input("Enter Card PAN (or press Enter for default 4532015588991234): ").strip()
-    if not pan:
-        pan = "4532015588991234"
+    pan = _prompt("Enter Card PAN (or press Enter for default 4532015588991234): ", "4532015588991234")
 
     amount_input = input("Enter Amount in USD (or press Enter for $25.50): ").strip()
-    if not amount_input:
+    try:
+        amount_iso = f"{int(float(amount_input) * 100):012d}" if amount_input else "000000002550"
+    except ValueError:
+        print(f"{YELLOW}Could not parse amount, using $25.50{RESET}")
         amount_iso = "000000002550"
-    else:
-        try:
-            cents = int(float(amount_input) * 100)
-            amount_iso = f"{cents:012d}"
-        except ValueError:
-            amount_iso = "000000002550"
 
     stan = input("Enter 6-digit STAN (or press Enter for 000123): ").strip()
-    if not stan or len(stan) != 6:
+    if not stan or len(stan) != 6 or not stan.isdigit():
         stan = "000123"
 
-    now_str = datetime.utcnow().strftime("%m%d%H%M%S")
     fields = {
-        2: pan,
-        3: "000000",
-        4: amount_iso,
-        7: now_str,
-        11: stan,
-        41: "TERM0001",
-        42: "MERCHANT1234567",
-        49: "840"
+        2: pan, 3: "000000", 4: amount_iso, 7: now_iso_datetime(), 11: stan,
+        41: "TERM0001", 42: "MERCHANT1234567", 49: "840",
     }
     payload = pack_iso("0200", fields)
-
     print(f"\nTransmitting 0200 Purchase to {host}:{port}...")
-    try:
-        resp = send_iso_frame(host, port, payload)
-        parse_response_summary(resp)
-    except Exception as e:
-        print(f"{RED}✘ Purchase Error: {e}{RESET}")
+    run_and_report(host, port, timeout, payload)
 
 
-def action_reversal(host, port):
+def action_reversal(host: str, port: int, timeout: float) -> None:
     print(f"\n{YELLOW}--- [0400] Transaction Reversal Request ---{RESET}")
-    stan = input("Enter 6-digit STAN of original transaction to reverse [default: 000123]: ").strip()
-    if not stan:
-        stan = "000123"
+    stan = _prompt("Enter 6-digit STAN of original transaction to reverse [default: 000123]: ", "000123")
+    pan = _prompt("Enter Card PAN of original transaction [default: 4532015588991234]: ", "4532015588991234")
 
-    pan = input("Enter Card PAN of original transaction [default: 4532015588991234]: ").strip()
-    if not pan:
-        pan = "4532015588991234"
-
-    now_str = datetime.utcnow().strftime("%m%d%H%M%S")
     fields = {
-        2: pan,
-        3: "000000",
-        4: "000000002550",
-        7: now_str,
-        11: stan,
-        41: "TERM0001",
-        42: "MERCHANT1234567",
-        49: "840"
+        2: pan, 3: "000000", 4: "000000002550", 7: now_iso_datetime(), 11: stan,
+        41: "TERM0001", 42: "MERCHANT1234567", 49: "840",
     }
     payload = pack_iso("0400", fields)
-
     print(f"\nTransmitting 0400 Reversal for STAN={stan}...")
-    try:
-        resp = send_iso_frame(host, port, payload)
-        parse_response_summary(resp)
-    except Exception as e:
-        print(f"{RED}✘ Reversal Error: {e}{RESET}")
+    run_and_report(host, port, timeout, payload)
 
 
-def action_emv_purchase(host, port):
+def action_emv_purchase(host: str, port: int, timeout: float) -> None:
     print(f"\n{YELLOW}--- [0200 + DE 55] EMV Chip Card Transaction ---{RESET}")
-    de55 = "9F2608A1B2C3D4E5F607089F360200E29F10120110A000002A0000000000000000000000FF9C01009A032608149F370412345678"
-    now_str = datetime.utcnow().strftime("%m%d%H%M%S")
-
+    de55 = ("9F2608A1B2C3D4E5F607089F360200E29F10120110A000002A0000000000000"
+            "000000000000FF9C01009A032608149F370412345678")
     fields = {
-        2: "4532015588991234",
-        3: "000000",
-        4: "000000004999",
-        7: now_str,
-        11: "000555",
-        41: "TERM0001",
-        42: "MERCHANT1234567",
-        49: "840",
-        55: de55
+        2: "4532015588991234", 3: "000000", 4: "000000004999", 7: now_iso_datetime(),
+        11: "000555", 41: "TERM0001", 42: "MERCHANT1234567", 49: "840", 55: de55,
     }
     payload = pack_iso("0200", fields)
-
-    print(f"Transmitting 0200 EMV Chip Card Purchase (ARQC: 9F26, ATC: 9F36 in DE 55)...")
-    try:
-        resp = send_iso_frame(host, port, payload)
-        parse_response_summary(resp)
-    except Exception as e:
-        print(f"{RED}✘ EMV Error: {e}{RESET}")
+    print("Transmitting 0200 EMV Chip Card Purchase (ARQC: 9F26, ATC: 9F36 in DE 55)...")
+    run_and_report(host, port, timeout, payload)
 
 
-def action_benchmark(host, port):
-    print(f"\n{YELLOW}--- Running Latency & Throughput Benchmark (10 Echoes) ---{RESET}")
+def action_benchmark(host: str, port: int, timeout: float, iterations: int = 10) -> None:
+    print(f"\n{YELLOW}--- Running Latency & Throughput Benchmark ({iterations} Echoes) ---{RESET}")
     latencies = []
-    for i in range(1, 11):
-        now_str = datetime.utcnow().strftime("%m%d%H%M%S")
-        stan = f"{i:06d}"
-        payload = f"6000000000080082200000000000000400000000000000{now_str}{stan}301"
-
-        t0 = time.perf_counter()
+    for i in range(1, iterations + 1):
+        fields = {7: now_iso_datetime(), 11: f"{i:06d}", 70: "301"}
+        payload = pack_iso("0800", fields)
         try:
-            send_iso_frame(host, port, payload)
-            elapsed = (time.perf_counter() - t0) * 1000
+            _, elapsed = send_iso_frame(host, port, payload, timeout)
             latencies.append(elapsed)
-            print(f"  [{i}/10] Echo acknowledged — Latency: {elapsed:.2f} ms")
-        except Exception as e:
-            print(f"  [{i}/10] {RED}Failed: {e}{RESET}")
+            print(f"  [{i}/{iterations}] Echo acknowledged — Latency: {elapsed:.2f} ms")
+        except Iso8583ConnectionError as exc:
+            print(f"  [{i}/{iterations}] {RED}Failed: {exc}{RESET}")
 
     if latencies:
-        avg_lat = sum(latencies) / len(latencies)
-        min_lat = min(latencies)
-        max_lat = max(latencies)
         print(f"\n{GREEN}{BOLD}Benchmark Results:{RESET}")
-        print(f"  Total Sent: 10 | Successful: {len(latencies)}")
-        print(f"  Avg Latency: {avg_lat:.2f} ms | Min: {min_lat:.2f} ms | Max: {max_lat:.2f} ms\n")
+        print(f"  Total Sent: {iterations} | Successful: {len(latencies)}")
+        print(f"  Avg Latency: {sum(latencies) / len(latencies):.2f} ms | "
+              f"Min: {min(latencies):.2f} ms | Max: {max(latencies):.2f} ms\n")
 
 
-def action_custom(host, port):
+def action_custom(host: str, port: int, timeout: float) -> None:
     print(f"\n{YELLOW}--- Send Custom Raw ISO Message ---{RESET}")
     payload = input("Paste your raw ISO 8583 payload string:\n> ").strip()
     if not payload:
         print("Empty payload. Aborted.")
         return
-    try:
-        resp = send_iso_frame(host, port, payload)
-        parse_response_summary(resp)
-    except Exception as e:
-        print(f"{RED}✘ Error: {e}{RESET}")
+    run_and_report(host, port, timeout, payload)
 
 
-def main():
-    host = DEFAULT_HOST
-    port = DEFAULT_PORT
+MENU_ACTIONS: Dict[str, tuple[str, Callable[[str, int, float], None]]] = {
+    "1": ("Send 0800 Keep-Alive Echo Test (DE 70 = 301)", action_echo),
+    "2": ("Send 0200 Purchase Authorization ($25.50)", action_purchase),
+    "3": ("Send 0400 Transaction Reversal (Reverses previous 0200)", action_reversal),
+    "4": ("Send 0200 EMV Chip Card Transaction (with DE 55 BER-TLV)", action_emv_purchase),
+    "5": ("Send Custom Raw ISO 8583 Message", action_custom),
+    "6": ("Run Latency Benchmark (10 Consecutive Echoes)", action_benchmark),
+}
 
-    if len(sys.argv) > 1:
-        host = sys.argv[1]
-    if len(sys.argv) > 2:
-        port = int(sys.argv[2])
 
-    print_banner()
-    print(f"Target Engine: {BOLD}{host}:{port}{RESET}\n")
+def main(argv=None) -> None:
+    parser = argparse.ArgumentParser(description="ISO 8583 terminal & switch client simulator")
+    parser.add_argument("host", nargs="?", default=DEFAULT_HOST)
+    parser.add_argument("port", nargs="?", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="Socket timeout in seconds")
+    args = parser.parse_args(argv)
+
+    print_banner(args.host, args.port)
 
     while True:
         print(f"{BOLD}Select an action to simulate:{RESET}")
-        print(f"  [{CYAN}1{RESET}] Send 0800 Keep-Alive Echo Test (DE 70 = 301)")
-        print(f"  [{CYAN}2{RESET}] Send 0200 Purchase Authorization ($25.50)")
-        print(f"  [{CYAN}3{RESET}] Send 0400 Transaction Reversal (Reverses previous 0200)")
-        print(f"  [{CYAN}4{RESET}] Send 0200 EMV Chip Card Transaction (with DE 55 BER-TLV)")
-        print(f"  [{CYAN}5{RESET}] Send Custom Raw ISO 8583 Message")
-        print(f"  [{CYAN}6{RESET}] Run Latency Benchmark (10 Consecutive Echoes)")
+        for key, (label, _) in MENU_ACTIONS.items():
+            print(f"  [{CYAN}{key}{RESET}] {label}")
         print(f"  [{RED}q{RESET}] Quit")
 
-        choice = input(f"\nEnter choice [1-6/q]: ").strip()
+        choice = input("\nEnter choice [1-6/q]: ").strip().lower()
 
-        if choice == "1":
-            action_echo(host, port)
-        elif choice == "2":
-            action_purchase(host, port)
-        elif choice == "3":
-            action_reversal(host, port)
-        elif choice == "4":
-            action_emv_purchase(host, port)
-        elif choice == "5":
-            action_custom(host, port)
-        elif choice == "6":
-            action_benchmark(host, port)
-        elif choice.lower() in ("q", "quit", "exit"):
+        if choice in ("q", "quit", "exit"):
             print("\nExiting ISO 8583 Client. Goodbye!\n")
             break
-        else:
+
+        action = MENU_ACTIONS.get(choice)
+        if action is None:
             print(f"{RED}Invalid option. Please choose 1-6 or q.{RESET}")
+        else:
+            _, handler = action
+            handler(args.host, args.port, args.timeout)
 
         input(f"\n{BLUE}Press Enter to return to menu...{RESET}")
         print("\n" + "=" * 70 + "\n")
 
 
 if __name__ == "__main__":
-    main()
-
-# python3 client/iso_terminal_client.py
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nInterrupted. Goodbye!")
+        sys.exit(0)
