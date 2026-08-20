@@ -808,6 +808,14 @@
         .alert-warn    { background: rgba(245,158,11,0.1);  border: 1px solid rgba(245,158,11,0.3);  color: #fcd34d; }
         .alert-error   { background: rgba(239,68,68,0.1);   border: 1px solid rgba(239,68,68,0.3);   color: #fca5a5; }
 
+        /* JSON Syntax Highlighting */
+        .json-key { color: #38bdf8; font-weight: 500; }
+        .json-string { color: #34d399; }
+        .json-number { color: #f59e0b; }
+        .json-boolean { color: #a78bfa; font-weight: 600; }
+        .json-null { color: #f87171; font-style: italic; }
+        .copy-btn { font-size: 0.72rem; padding: 0.25rem 0.6rem; border-radius: 4px; }
+
         /* section label above tabs */
         .section-header {
             display: flex;
@@ -1449,11 +1457,17 @@
         </div>
 
         <div class="card" style="margin-top:0.5rem;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-                <h3>Raw Telemetry Payload</h3>
-                <button class="btn btn-secondary btn-sm" onclick="loadTelemetry()">↻ Refresh</button>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <h3>Raw Telemetry Payload</h3>
+                    <span class="badge" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:0.65rem;">GET /api/iso/echo/status</span>
+                </div>
+                <div style="display:flex; gap:0.4rem;">
+                    <button class="btn btn-secondary btn-sm copy-btn" id="copyTelBtn" onclick="copyTelemetryRaw()">📋 Copy JSON</button>
+                    <button class="btn btn-secondary btn-sm" onclick="loadTelemetry()">↻ Refresh</button>
+                </div>
             </div>
-            <div id="telemetryRaw" class="code-block">Click "Refresh" to load telemetry data</div>
+            <pre id="telemetryRaw" class="code-block" style="margin:0; max-height:280px; overflow:auto; font-size:0.78rem; line-height:1.45;">Click "Refresh" to load telemetry data</pre>
         </div>
     </section>
 
@@ -2285,7 +2299,50 @@ function renderTelemetry(data) {
     setTelVal('telSuccessRate', rate, 'green');
     
     const rawEl = document.getElementById('telemetryRaw');
-    if (rawEl) rawEl.textContent = JSON.stringify(data, null, 2);
+    if (rawEl) {
+        rawEl.innerHTML = syntaxHighlightJson(data);
+    }
+}
+
+function syntaxHighlightJson(json) {
+    if (typeof json !== 'string') {
+        json = JSON.stringify(json, null, 2);
+    }
+    json = escHtml(json);
+    return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+        let cls = 'json-number';
+        if (/^"/.test(match)) {
+            if (/:$/.test(match)) {
+                cls = 'json-key';
+            } else {
+                cls = 'json-string';
+            }
+        } else if (/true|false/.test(match)) {
+            cls = 'json-boolean';
+        } else if (/null/.test(match)) {
+            cls = 'json-null';
+        }
+        return '<span class="' + cls + '">' + match + '</span>';
+    });
+}
+
+let latestTelemetryJson = '';
+function copyTelemetryRaw() {
+    const rawEl = document.getElementById('telemetryRaw');
+    if (!rawEl) return;
+    const text = rawEl.innerText || rawEl.textContent;
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copyTelBtn');
+        if (btn) {
+            const orig = btn.innerHTML;
+            btn.innerHTML = '✅ Copied!';
+            btn.style.color = '#34d399';
+            setTimeout(() => {
+                btn.innerHTML = orig;
+                btn.style.color = '';
+            }, 2000);
+        }
+    }).catch(err => console.error('Failed to copy', err));
 }
 
 function setTelVal(id, val, cls) {
