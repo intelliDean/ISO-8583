@@ -71,11 +71,15 @@ def test_all():
     # TAB 4: EMV BER-TLV CHIP CARD PARSER
     # ---------------------------------------------------------
     print("\n[TAB 4: EMV BER-TLV EXPLORER] Decoding DE 55 Chip Stream & Fraud Signals...")
-    emv_sample = "9F2608A1B2C3D4E5F6079F3602001E9F10120110A000002A0000000000000000000000FF"
+    emv_sample = "9F2608A1B2C3D4E5F6079F9F3602001E9F10120110A000002A0000000000000000000000FF9C010082020100"
     emv_res = post_json("/api/iso/emv/parse", {"de55Hex": emv_sample})
     print(f"  ✓ Parsed {emv_res['tagCount']} TLV Tags:")
     print(f"    - ARQC Present: {emv_res['hasArqc']} (Value: {emv_res['arqcValue']})")
+    print(f"    - ATC Value: {emv_res['atcDecimal']} (Hex: {emv_res['atcValue']})")
     print(f"    - Tag 9F26 [ARQC]: {emv_res['arqcValue']}")
+    print(f"    - Tag 9F36 [ATC]: {emv_res['atcValue']} (Dec: {emv_res['atcDecimal']})")
+    assert emv_res['hasArqc'], "Should detect ARQC (9F26)"
+    assert emv_res['hasAtc'], "Should detect ATC (9F36)"
 
     # ---------------------------------------------------------
     # TAB 5: CRYPTO LAB

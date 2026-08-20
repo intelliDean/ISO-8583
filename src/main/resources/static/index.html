@@ -1599,10 +1599,11 @@ function loadPreset(name) {
 // ─── EMV Presets ──────────────────────────────────
 function loadEmvPreset(name) {
     const presets = {
-        contact:      '9F2608A1B2C3D4E5F6079F3602001E9F10120110A000002A0000000000000000000000FF9C01009F260182',
+        contact:      '9F2608A1B2C3D4E5F6079F9F3602001E9F10120110A000002A0000000000000000000000FF9C010082020100',
         contactless:  '9F2608AABBCCDDEEFF00019F36020043840E325041592E5359532E4444463031'
     };
     document.getElementById('emvInput').value = presets[name] || '';
+    parseEmv();
 }
 
 // ─── Unpack ───────────────────────────────────────
@@ -1944,31 +1945,51 @@ async function parseEmv() {
 }
 
 function renderEmvResult(data) {
-    document.getElementById('emvTagCount').textContent    = data.tagCount ?? '—';
-    document.getElementById('emvArqcPresent').textContent = data.arqcPresent ? '✅ YES' : '❌ NO';
-    document.getElementById('emvArqcPresent').style.color = data.arqcPresent ? 'var(--accent-green)' : 'var(--accent-red)';
-    document.getElementById('emvArqcHex').textContent     = data.arqcHex || '—';
-    document.getElementById('emvAtcDecimal').textContent  = data.atcDecimal != null ? data.atcDecimal : '—';
+    if (!data) return;
+    const hasArqc = data.hasArqc !== undefined ? data.hasArqc : (data.arqcPresent !== undefined ? data.arqcPresent : false);
+    const arqcVal = data.arqcValue || data.arqcHex || '—';
+    const atcDec = data.atcDecimal !== undefined && data.atcDecimal !== null ? data.atcDecimal : (data.atcValue ? parseInt(data.atcValue, 16) : '—');
+    const tagCount = data.tagCount !== undefined ? data.tagCount : (data.tags ? data.tags.length : '—');
+
+    const countEl = document.getElementById('emvTagCount');
+    if (countEl) countEl.textContent = tagCount;
+
+    const arqcPresEl = document.getElementById('emvArqcPresent');
+    if (arqcPresEl) {
+        arqcPresEl.textContent = hasArqc ? '✅ YES' : '❌ NO';
+        arqcPresEl.style.color = hasArqc ? 'var(--accent-green)' : 'var(--accent-red)';
+    }
+
+    const arqcHexEl = document.getElementById('emvArqcHex');
+    if (arqcHexEl) arqcHexEl.textContent = arqcVal;
+
+    const atcDecEl = document.getElementById('emvAtcDecimal');
+    if (atcDecEl) atcDecEl.textContent = atcDec;
 
     const tree = document.getElementById('emvTlvTree');
-    tree.innerHTML = '';
+    if (tree) {
+        tree.innerHTML = '';
+        (data.tags || []).forEach(tag => {
+            const isCritical = ['9F26', '9F36', '9F10', '57', '5A'].includes(tag.tag?.toUpperCase());
+            const div = document.createElement('div');
+            div.className = 'tlv-tag' + (isCritical ? ' critical' : '');
+            div.innerHTML = `
+                <div class="tlv-tag-header" onclick="this.parentElement.querySelector('.tlv-tag-val').classList.toggle('hidden')">
+                    <span class="tlv-tag-id">${escHtml(tag.tag || '')}</span>
+                    <span class="tlv-tag-name">${escHtml(tag.name || 'Unknown Tag')}</span>
+                    ${isCritical ? '<span class="badge badge-amber">CRITICAL</span>' : ''}
+                    <span class="tlv-tag-len">${tag.length ?? ''} bytes</span>
+                </div>
+                <div class="tlv-tag-val ${isCritical ? 'arqc-highlight' : ''}">
+                    <div style="font-family:'Fira Code',monospace; margin-bottom:0.25rem;">${escHtml(tag.value || tag.hexValue || '')}</div>
+                    ${tag.description ? `<div style="font-size:0.75rem; color:var(--text-muted); font-family:'Inter',sans-serif;">${escHtml(tag.description)}</div>` : ''}
+                </div>`;
+            tree.appendChild(div);
+        });
+    }
 
-    (data.tags || []).forEach(tag => {
-        const isCritical = ['9F26', '9F36', '9F10', '57', '5A'].includes(tag.tag?.toUpperCase());
-        const div = document.createElement('div');
-        div.className = 'tlv-tag' + (isCritical ? ' critical' : '');
-        div.innerHTML = `
-            <div class="tlv-tag-header" onclick="this.parentElement.querySelector('.tlv-tag-val').classList.toggle('hidden')">
-                <span class="tlv-tag-id">${escHtml(tag.tag || '')}</span>
-                <span class="tlv-tag-name">${escHtml(tag.name || 'Unknown Tag')}</span>
-                ${isCritical ? '<span class="badge badge-amber">CRITICAL</span>' : ''}
-                <span class="tlv-tag-len">${tag.length ?? ''} bytes</span>
-            </div>
-            <div class="tlv-tag-val ${isCritical ? 'arqc-highlight' : ''}">${escHtml(tag.value || tag.hexValue || '')}</div>`;
-        tree.appendChild(div);
-    });
-
-    document.getElementById('emvResult').classList.remove('hidden');
+    const emvResult = document.getElementById('emvResult');
+    if (emvResult) emvResult.classList.remove('hidden');
 }
 
 // ─── Crypto Lab ───────────────────────────────────
