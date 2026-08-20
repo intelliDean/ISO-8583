@@ -88,7 +88,7 @@ def print_banner():
 def parse_response_summary(resp: str):
     """Prints a friendly summary of key response fields."""
     if len(resp) < 14:
-        print(f"Raw: {resp}")
+        print(f"Raw Response: {resp}")
         return
 
     # Check for TPDU header
@@ -96,7 +96,23 @@ def parse_response_summary(resp: str):
     offset = 10 if has_header else 0
 
     mti = resp[offset:offset + 4]
-    print(f"{BOLD}MTI:{RESET} {mti}")
+    mti_desc = {
+        "0210": "Financial Transaction Response (Authorization Result)",
+        "0410": "Reversal Response (Chargeback / Reversal Acknowledged)",
+        "0810": "Network Management Response (Echo / Keep-Alive Acknowledged)"
+    }.get(mti, "ISO 8583 Response")
+
+    print(f"{CYAN}{BOLD}Message Details:{RESET}")
+    if has_header:
+        print(f"  {BOLD}TPDU Header:{RESET}    {resp[:10]}")
+    print(f"  {BOLD}MTI:{RESET}            {mti} ({mti_desc})")
+    print(f"  {BOLD}Raw Payload:{RESET}    {resp}")
+
+    # Inspect common response fields
+    if "00" in resp[offset + 20:offset + 60]:
+        print(f"  {BOLD}Status:{RESET}         {GREEN}✔ APPROVED / SUCCESSFUL (RC 00){RESET}")
+    else:
+        print(f"  {BOLD}Status:{RESET}         {YELLOW}Awaiting verification{RESET}")
 
 
 def compute_bitmaps(fields: dict) -> tuple[str, str | None]:
