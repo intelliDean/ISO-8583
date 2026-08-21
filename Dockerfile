@@ -8,7 +8,7 @@ WORKDIR /workspace
 # Copy Maven wrapper & POM first for layer caching
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
-RUN ./mvnw dependency:go-offline -B || true
+RUN chmod +x ./mvnw && ./mvnw dependency:go-offline -B || true
 
 # Copy source code and build
 COPY src/ src/
