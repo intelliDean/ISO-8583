@@ -2513,7 +2513,7 @@ async function loadTransactions() {
                 <span class="code-font" style="font-size:0.75rem;">${t.maskedPan || '—'}</span>
                 <span>$${formatCents(t.authorisedAmount || t.amount || '000000000000')}</span>
                 <span><span class="state-chip state-${t.state}">${t.state || '—'}</span></span>
-                <span style="font-size:0.7rem;color:var(--text-muted);">${formatTs(t.timestamp)}</span>
+                <span style="font-size:0.7rem;color:var(--text-muted);">${formatTs(t.createdAt || t.timestamp || t.transmissionTime)}</span>
             </div>`).join('');
     } catch (e) { console.error(e); }
 }
