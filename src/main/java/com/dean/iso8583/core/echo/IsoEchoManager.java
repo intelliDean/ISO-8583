@@ -115,6 +115,22 @@ public class IsoEchoManager {
     }
 
     /**
+     * Executes an initial background keep-alive echo on application ready.
+     */
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    public void onStartup() {
+        if (!properties.enabled()) return;
+        Thread.ofVirtual().name("iso-echo-startup").start(() -> {
+            try {
+                Thread.sleep(1000);
+                triggerEcho();
+            } catch (Exception ex) {
+                log.warn("Initial startup keep-alive echo failed: {}", ex.getMessage());
+            }
+        });
+    }
+
+    /**
      * <b>scheduledEcho</b>: periodic scheduled heartbeat task.
      * Runs according to the configured interval when {@code iso.echo.enabled=true}.
      */

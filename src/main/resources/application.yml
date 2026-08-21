@@ -40,7 +40,7 @@ iso:
       truststore-password: ${ISO_TCP_TLS_TRUSTSTORE_PASSWORD:changeit}
       client-auth: ${ISO_TCP_TLS_CLIENT_AUTH:NONE}
   echo:
-    enabled: ${ISO_ECHO_ENABLED:false}
+    enabled: ${ISO_ECHO_ENABLED:true}
     interval-seconds: ${ISO_ECHO_INTERVAL_SECONDS:30}
     failure-threshold: ${ISO_ECHO_FAILURE_THRESHOLD:3}
     timeout-ms: ${ISO_ECHO_TIMEOUT_MS:5000}

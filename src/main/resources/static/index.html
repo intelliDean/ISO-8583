@@ -2655,35 +2655,46 @@ function renderResiliency(data) {
 
 function renderTelemetry(data) {
     if (!data) return;
-    const status = data.status || 'HEALTHY';
-    setTelVal('telChannelStatus', status, status === 'HEALTHY' ? 'green' : 'amber');
-    
-    const lastLatency = data.lastLatencyMs !== undefined && data.lastLatencyMs !== null 
-        ? data.lastLatencyMs 
-        : (data.lastRttMs !== undefined ? data.lastRttMs : '—');
-    setTelVal('telLastRtt', lastLatency, 'blue');
-    
-    const minLatency = data.minRttMs !== undefined && data.minRttMs !== null 
-        ? data.minRttMs 
-        : (lastLatency !== '—' ? lastLatency : '—');
-    setTelVal('telMinRtt', minLatency, 'green');
-    
-    const maxLatency = data.maxRttMs !== undefined && data.maxRttMs !== null 
-        ? data.maxRttMs 
-        : (lastLatency !== '—' ? lastLatency : '—');
-    setTelVal('telMaxRtt', maxLatency, 'amber');
-    
     const sent = data.totalEchoesSent !== undefined ? data.totalEchoesSent : (data.echosSent ?? 0);
     const ok = data.successfulEchoes !== undefined ? data.successfulEchoes : (data.echosOk ?? 0);
     const failed = data.failedEchoes !== undefined ? data.failedEchoes : (data.echosFailed ?? 0);
-    
+
+    let status = data.status || (sent === 0 ? 'STANDBY' : 'HEALTHY');
+    let statusClass = 'green';
+    if (status === 'HEALTHY' || status === 'UP') {
+        statusClass = 'green';
+    } else if (status === 'DEGRADED') {
+        statusClass = 'amber';
+    } else if (status === 'DOWN') {
+        statusClass = 'red';
+    } else if (status === 'UNKNOWN' || status === 'STANDBY') {
+        status = sent > 0 ? status : 'STANDBY';
+        statusClass = 'amber';
+    }
+    setTelVal('telChannelStatus', status, statusClass);
+
+    const lastLatency = data.lastLatencyMs !== undefined && data.lastLatencyMs !== null 
+        ? data.lastLatencyMs 
+        : (data.lastRttMs !== undefined && data.lastRttMs !== null ? data.lastRttMs : '—');
+    setTelVal('telLastRtt', lastLatency !== '—' ? lastLatency : '—', 'blue');
+
+    const minLatency = data.minRttMs !== undefined && data.minRttMs !== null 
+        ? data.minRttMs 
+        : (lastLatency !== '—' ? lastLatency : '—');
+    setTelVal('telMinRtt', minLatency !== '—' ? minLatency : '—', 'green');
+
+    const maxLatency = data.maxRttMs !== undefined && data.maxRttMs !== null 
+        ? data.maxRttMs 
+        : (lastLatency !== '—' ? lastLatency : '—');
+    setTelVal('telMaxRtt', maxLatency !== '—' ? maxLatency : '—', 'amber');
+
     setTelVal('telEchosSent', sent, 'blue');
     setTelVal('telEchosOk', ok, 'green');
-    setTelVal('telEchosFailed', failed, 'red');
-    
-    const rate = sent > 0 ? ((ok / sent) * 100).toFixed(1) : (sent === 0 ? '100.0' : '—');
-    setTelVal('telSuccessRate', rate, 'green');
-    
+    setTelVal('telEchosFailed', failed, failed > 0 ? 'red' : 'green');
+
+    const rate = sent > 0 ? ((ok / sent) * 100).toFixed(1) : '—';
+    setTelVal('telSuccessRate', rate, rate === '—' ? 'blue' : (rate >= 95 ? 'green' : 'amber'));
+
     const rawEl = document.getElementById('telemetryRaw');
     if (rawEl) {
         rawEl.innerHTML = syntaxHighlightJson(data);
