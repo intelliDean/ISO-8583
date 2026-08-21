@@ -1004,6 +1004,7 @@
         .section-header p  { font-size: 0.8rem; color: var(--text-muted); }
 
         .bitmap-block .sub-text { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.6rem; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
@@ -1036,7 +1037,7 @@
         <button class="tab-btn"        id="tab-btn-emv"        onclick="switchTab('emv')"        role="tab">💡 EMV BER-TLV</button>
         <button class="tab-btn"        id="tab-btn-crypto"     onclick="switchTab('crypto')"     role="tab">🔐 Crypto Lab</button>
         <button class="tab-btn"        id="tab-btn-clearing"   onclick="switchTab('clearing')"   role="tab">🏦 Clearing & Settlement</button>
-        <button class="tab-btn"        id="tab-btn-telemetry"  onclick="switchTab('telemetry')"  onclick="loadTelemetry()" role="tab">📡 Network Telemetry</button>
+        <button class="tab-btn"        id="tab-btn-telemetry"  onclick="switchTab('telemetry')"  role="tab">📡 Network Telemetry</button>
         <button class="tab-btn"        id="tab-btn-guide"      onclick="switchTab('guide')"      role="tab">📚 Masterclass</button>
     </nav>
 
@@ -1787,10 +1788,9 @@
 
 <div id="toast"></div>
 
-<script src="app.js"></script>
 <script>
 // ══════════════════════════════════════════════════
-// EXTENDED DASHBOARD JAVASCRIPT — Option D
+// EXTENDED DASHBOARD JAVASCRIPT
 // ══════════════════════════════════════════════════
 
 const API = '';
@@ -1799,8 +1799,10 @@ const API = '';
 function switchTab(id) {
     document.querySelectorAll('.tab-content').forEach(s => s.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('tab-' + id).classList.add('active');
-    document.getElementById('tab-btn-' + id).classList.add('active');
+    const targetContent = document.getElementById('tab-' + id);
+    const targetBtn = document.getElementById('tab-btn-' + id);
+    if (targetContent) targetContent.classList.add('active');
+    if (targetBtn) targetBtn.classList.add('active');
     if (id === 'telemetry') loadTelemetry();
     if (id === 'clearing') { loadTransactions(); loadBatches(); }
 }
@@ -1808,6 +1810,7 @@ function switchTab(id) {
 // ─── Toast ────────────────────────────────────────
 function showToast(msg, type = 'info') {
     const t = document.getElementById('toast');
+    if (!t) return;
     const colors = { info: '#3b82f6', success: '#10b981', warn: '#f59e0b', error: '#ef4444' };
     t.style.borderColor = colors[type] || colors.info;
     t.textContent = msg;
@@ -1824,7 +1827,8 @@ function loadPreset(name) {
         emv_auth:  '600000000002007020000000C08200164532015588991234000000000000002550000123TERM0001MERCHANT12345678400329F2608A1B2C3D4E5F6079F9F3602001E'
     };
     const raw = presets[name] || '';
-    document.getElementById('rawInput').value = raw;
+    const inputEl = document.getElementById('rawInput');
+    if (inputEl) inputEl.value = raw;
     unpackPayload();
 }
 
@@ -1834,16 +1838,21 @@ function loadEmvPreset(name) {
         contact:      '9F2608A1B2C3D4E5F6079F9F3602001E9F10120110A000002A0000000000000000000000FF9C010082020100',
         contactless:  '9F2608AABBCCDDEEFF00019F36020043840E325041592E5359532E4444463031'
     };
-    document.getElementById('emvInput').value = presets[name] || '';
+    const inputEl = document.getElementById('emvInput');
+    if (inputEl) inputEl.value = presets[name] || '';
     parseEmv();
 }
 
 // ─── Unpack ───────────────────────────────────────
 async function unpackPayload() {
-    const raw = document.getElementById('rawInput').value.trim();
+    const rawInputEl = document.getElementById('rawInput');
+    if (!rawInputEl) return;
+    const raw = rawInputEl.value.trim();
     if (!raw) return;
-    const hasHeader = document.getElementById('hasHeader').checked;
-    const spec = document.getElementById('inspectSpecSelect').value;
+    const hasHeaderEl = document.getElementById('hasHeader');
+    const hasHeader = hasHeaderEl ? hasHeaderEl.checked : true;
+    const specEl = document.getElementById('inspectSpecSelect');
+    const spec = specEl ? specEl.value : 'iso8583-1987';
     try {
         const res = await fetch(API + '/api/iso/unpack', {
             method: 'POST',
@@ -1899,19 +1908,25 @@ function badgeForType(t) {
 }
 
 function exportInspectedToCrypto() {
-    const payload = document.getElementById('rawInput').value.trim();
+    const rawInputEl = document.getElementById('rawInput');
+    const payload = rawInputEl ? rawInputEl.value.trim() : '';
     if (payload) {
-        document.getElementById('macPayload').value = payload;
+        const macPayloadEl = document.getElementById('macPayload');
+        if (macPayloadEl) macPayloadEl.value = payload;
         switchTab('crypto');
         showToast('Payload exported to Crypto Lab', 'success');
     }
 }
 
 // ─── Pack & Simulate ──────────────────────────────
-function onMtiChange() { populateBuilderFields(document.getElementById('bMti').value); }
+function onMtiChange() {
+    const mtiEl = document.getElementById('bMti');
+    if (mtiEl) populateBuilderFields(mtiEl.value);
+}
 
 function populateBuilderFields(mti) {
     const d = document.getElementById('builderFields');
+    if (!d) return;
     const base = `
         <div class="form-row">
             <div class="form-group"><label>DE 2 — PAN:</label><input type="text" id="f2" value="4532015588991234"></div>
@@ -1935,6 +1950,7 @@ function populateBuilderFields(mti) {
 window.addEventListener('DOMContentLoaded', () => {
     populateBuilderFields('0200');
     buildBitmapGrids();
+    loadPreset('financial');
     loadEmvPreset('contact');
     setTimeout(loadTelemetryQuiet, 800);
 });

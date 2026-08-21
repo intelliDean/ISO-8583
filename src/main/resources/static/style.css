@@ -995,3 +995,4 @@ body {
 .section-header p  { font-size: 0.8rem; color: var(--text-muted); }
 
 .bitmap-block .sub-text { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.6rem; }
+.hidden { display: none !important; }
