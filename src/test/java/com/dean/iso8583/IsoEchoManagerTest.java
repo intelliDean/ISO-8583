@@ -39,7 +39,7 @@ class IsoEchoManagerTest {
     @BeforeEach
     void setUp() {
         properties = new IsoEchoProperties(true, 30, 3, 5000, "6000000000");
-        echoManager = new IsoEchoManager(properties, tcpClient);
+        echoManager = new IsoEchoManager(properties, tcpClient, null);
     }
 
     @Nested

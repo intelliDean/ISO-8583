@@ -6,7 +6,17 @@ import com.dean.iso8583.core.dto.IsoFieldType;
 import java.util.HashMap;
 import java.util.Map;
 
-public class IsoSpec {
+/**
+ * ISO 8583 field specification dictionary — defines the data type, length, and
+ * encoding rules for all standard ISO 8583 Data Elements (DE 1–128).
+ *
+ * <p>This class is a static-only registry and must not be instantiated.</p>
+ */
+public final class IsoSpec {
+
+    private IsoSpec() {
+        // Static utility class — not instantiable
+    }
 
     private static final Map<Integer, IsoDTOs.IsoFieldDef> FIELD_DEFS;
 
@@ -14,14 +24,13 @@ public class IsoSpec {
         Map<Integer, IsoDTOs.IsoFieldDef> fields = new HashMap<>();
 
         // Bitmaps
-        fields.put(1, IsoDTOs.IsoFieldDef.builder() //decided to use builder
-                .fieldId(1)
-                .name("Secondary Bitmap")
-                .type(IsoFieldType.BINARY_FIXED)
-                .maxLength(8)
-                .description("Indicates presence of DE 65-128")
-                .build()
-        );
+        fields.put(1, new IsoDTOs.IsoFieldDef(
+                1,
+                "Secondary Bitmap",
+                IsoFieldType.BINARY_FIXED,
+                8,
+                "Indicates presence of DE 65-128"
+        ));
 
         // Data Elements 2 - 128
         fields.put(2, new IsoDTOs.IsoFieldDef(

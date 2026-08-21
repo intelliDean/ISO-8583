@@ -7,10 +7,11 @@ import com.dean.iso8583.core.echo.dto.EchoResult;
 import com.dean.iso8583.core.echo.dto.IsoEchoProperties;
 import com.dean.iso8583.core.echo.enums.ChannelHealthStatus;
 import com.dean.iso8583.core.echo.enums.NetworkManagementCode;
+import com.dean.iso8583.core.metrics.IsoMetrics;
 import com.dean.iso8583.web.data.dto.WebDTOs;
 import com.dean.iso8583.web.data.utils.IsoTcpClient;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -43,45 +44,46 @@ import java.util.concurrent.locks.ReentrantLock;
 @Component
 public class IsoEchoManager {
 
+    // ── Injected dependencies ──────────────────────────────────────────────────
+
     private final IsoEchoProperties properties;
     private final IsoTcpClient tcpClient;
-    private final com.dean.iso8583.core.metrics.IsoMetrics isoMetrics;
+    private final IsoMetrics isoMetrics;
 
-    public IsoEchoManager(IsoEchoProperties properties, IsoTcpClient tcpClient) {
-        this(properties, tcpClient, null);
-    }
+    // ── Rolling telemetry counters ─────────────────────────────────────────────
 
-    @org.springframework.beans.factory.annotation.Autowired
-    public IsoEchoManager(
-            IsoEchoProperties properties,
-            IsoTcpClient tcpClient,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) com.dean.iso8583.core.metrics.IsoMetrics isoMetrics
-    ) {
-        this.properties = properties;
-        this.tcpClient = tcpClient;
-        this.isoMetrics = isoMetrics;
-    }
-
-
-    private final AtomicInteger stanGenerator = new AtomicInteger(1);
-    private final AtomicLong totalEchoesSent = new AtomicLong(0);
-    private final AtomicLong successfulEchoes = new AtomicLong(0);
-    private final AtomicLong failedEchoes = new AtomicLong(0);
+    private final AtomicInteger stanGenerator    = new AtomicInteger(1);
+    private final AtomicLong totalEchoesSent     = new AtomicLong(0);
+    private final AtomicLong successfulEchoes    = new AtomicLong(0);
+    private final AtomicLong failedEchoes        = new AtomicLong(0);
     private final AtomicInteger consecutiveFailures = new AtomicInteger(0);
 
     private final ReentrantLock statusLock = new ReentrantLock();
+
+    // ── Volatile state (written under statusLock, read without it for speed) ───
 
     /**
      * <b>volatile</b>: this variable may be accessed by multiple threads, and whenever one thread changes it, other threads must see that change.
      */
     private volatile ChannelHealthStatus healthStatus = ChannelHealthStatus.UNKNOWN;
-    private volatile Long lastLatencyMs = null;
-    private volatile Instant lastEchoTime = null;
+    private volatile Long    lastLatencyMs   = null;
+    private volatile Instant lastEchoTime    = null;
     private volatile Instant lastSuccessTime = null;
-    private volatile String lastError = null;
+    private volatile String  lastError       = null;
 
     private static final DateTimeFormatter DE7_FORMATTER =
             DateTimeFormatter.ofPattern("MMddHHmmss").withZone(ZoneOffset.UTC);
+
+    @Autowired
+    public IsoEchoManager(
+            IsoEchoProperties properties,
+            IsoTcpClient tcpClient,
+            @Autowired(required = false) IsoMetrics isoMetrics
+    ) {
+        this.properties = properties;
+        this.tcpClient  = tcpClient;
+        this.isoMetrics = isoMetrics;
+    }
 
 
     /**

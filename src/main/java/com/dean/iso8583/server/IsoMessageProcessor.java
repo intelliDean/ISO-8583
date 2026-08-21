@@ -131,34 +131,33 @@ public class IsoMessageProcessor {
 
     private void populateResponseFields(IsoMessage request, IsoMessage response) {
         response.setField(39, "00");
-        response.setField(37, generateRrn(request));
-        response.setField(38, generateAuthorizationCode(request));
+        response.setField(37, simulatedRrn());
+        response.setField(38, simulatedAuthCode(request));
     }
 
     /**
      * <p>Generates a deterministic 6-character auth code from DE 11 (STAN).</p>
      *
-     * Developer Note: <p>In production, auth codes are issued by the HSM or
+     * <p>Developer Note: In production, auth codes are issued by the HSM or
      * authorization engine and are globally unique. Here we derive one from
      * the STAN for simulation purposes.</p>
      */
-    private String generateAuthorizationCode(IsoMessage request) {
+    private String simulatedAuthCode(IsoMessage request) {
         if (!request.hasField(11)) {
             return "AUTH01";
         }
-        String stan = request.getField(11);
-        String code = "A" + stan;
-        return code.length() > 6 ? code.substring(0, 6) : String.format("%-6s", code);
+        String code = "A%s".formatted(request.getField(11));
+        return code.length() > 6 ? code.substring(0, 6) : "%-6s".formatted(code);
     }
 
     /**
-     * <p>Generates a 12-character Retrieval Reference Number (DE 37).</p>
+     * <p>Returns a simulated 12-character Retrieval Reference Number (DE 37).</p>
      *
-     * Developer Note: <p>In production, the RRN is issued by the acquirer
+     * <p>Developer Note: In production, the RRN is issued by the acquirer
      * system and is unique per transaction per acquirer BIN. We use a static
-     * value here for host simulation purposes.</p>
+     * value here for host simulation purposes only.</p>
      */
-    private String generateRrn(IsoMessage request) {
+    private String simulatedRrn() {
         return "123456789012";
     }
 }

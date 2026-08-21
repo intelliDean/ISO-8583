@@ -2,7 +2,6 @@ package com.dean.iso8583.core.clearing;
 
 import com.dean.iso8583.core.IsoPacker;
 import com.dean.iso8583.core.IsoUnpacker;
-//import com.dean.iso8583.core.clearing.dto.*;
 import com.dean.iso8583.core.clearing.dto.*;
 import com.dean.iso8583.core.clearing.enums.ClearingRecordType;
 import com.dean.iso8583.core.clearing.utils.InterchangeFeeCalculator;
@@ -117,11 +116,7 @@ public class BatchClearingEngine {
     }
 
     private String buildLockKey(String networkId) {
-        String lockNetworkId = StringUtils.hasText(networkId)
-                ? networkId
-                : DEFAULT_LOCK_NETWORK;
-
-        return "lock:clearing:batch:%s".formatted(lockNetworkId);
+        return "lock:clearing:batch:%s".formatted(resolveNetworkId(networkId));
     }
 
     private String nextBatchId() {

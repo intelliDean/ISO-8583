@@ -1,12 +1,12 @@
 package com.dean.iso8583.server;
 
-import com.dean.iso8583.core.dto.IsoMessage;
 import com.dean.iso8583.core.IsoPacker;
 import com.dean.iso8583.core.IsoUnpacker;
+import com.dean.iso8583.core.dto.IsoMessage;
+import com.dean.iso8583.core.metrics.IsoMetrics;
 import com.dean.iso8583.core.utils.IsoMessageSanitizer;
 import com.dean.iso8583.server.tls.IsoTlsContextFactory;
 import com.dean.iso8583.server.tls.IsoTlsProperties;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.SmartLifecycle;
@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 
 @Slf4j
@@ -33,19 +34,19 @@ public class IsoTcpServer implements SmartLifecycle {
     private final IsoTcpProperties properties;
     private final IsoTlsProperties tlsProperties;
     private final IsoTlsContextFactory tlsContextFactory;
-    private final com.dean.iso8583.core.metrics.IsoMetrics metrics;
+    private final IsoMetrics metrics;
     private final ExecutorService clientExecutor;
     private final IsoMessageProcessor messageProcessor;
 
     private volatile ServerSocket serverSocket;
-    private volatile boolean running;
+    private final AtomicBoolean running = new AtomicBoolean(false);
 
     public IsoTcpServer(
             IsoTcpProperties properties,
             IsoMessageProcessor messageProcessor,
             @Autowired(required = false) IsoTlsProperties tlsProperties,
             @Autowired(required = false) IsoTlsContextFactory tlsContextFactory,
-            @Autowired(required = false) com.dean.iso8583.core.metrics.IsoMetrics metrics
+            @Autowired(required = false) IsoMetrics metrics
     ) {
         this.properties = properties;
         this.messageProcessor = messageProcessor;
@@ -57,14 +58,14 @@ public class IsoTcpServer implements SmartLifecycle {
 
     @Override
     public void start() {
-        if (running) return;
+        if (running.get()) return;
 
         try {
             if (tlsProperties != null && tlsProperties.isEnabled() && tlsContextFactory != null) {
                 SSLContext sslContext = tlsContextFactory.createSslContext();
                 SSLServerSocket sslServerSocket = (SSLServerSocket) sslContext.getServerSocketFactory()
                         .createServerSocket(properties.port());
-                
+
                 tlsContextFactory.configureServerSocket(sslServerSocket);
                 serverSocket = sslServerSocket;
                 log.info("ISO 8583 TCP Host Simulator started on port {} with TLS/mTLS encryption (clientAuth={})",
@@ -74,7 +75,7 @@ public class IsoTcpServer implements SmartLifecycle {
                 log.info("ISO 8583 TCP Host Simulator started on port {} (Plain TCP)", properties.port());
             }
 
-            running = true;
+            running.set(true);
             Thread.startVirtualThread(this::acceptConnections);
 
         } catch (Exception exception) {
@@ -86,7 +87,7 @@ public class IsoTcpServer implements SmartLifecycle {
     }
 
     private void acceptConnections() {
-        while (running) {
+        while (running.get()) {
             try {
                 Socket socket = serverSocket.accept();
 
@@ -95,7 +96,7 @@ public class IsoTcpServer implements SmartLifecycle {
                 clientExecutor.submit(() -> handleClient(socket));
 
             } catch (IOException exception) {
-                if (running) {
+                if (running.get()) {
                     log.error("Error accepting TCP connection", exception);
                 }
             }
@@ -131,7 +132,7 @@ public class IsoTcpServer implements SmartLifecycle {
                 DataOutputStream output = new DataOutputStream(socket.getOutputStream())
         ) {
 
-            while (running && !socket.isClosed()) {
+            while (running.get() && !socket.isClosed()) {
                 byte[] payload = readFrame(input);
 
                 if (payload == null) return;
@@ -166,13 +167,13 @@ public class IsoTcpServer implements SmartLifecycle {
 
     private void processMessage(byte[] payload, DataOutputStream output) throws IOException {
         long startNanos = System.nanoTime();
-        String rawMessage = decodePayload(payload);
+        String rawMessage = new String(payload, StandardCharsets.US_ASCII);
         boolean hasHeader = hasTPDUHeader(rawMessage);
 
-        log.info("Received ISO 8583 message ({} bytes): {}", payload.length, 
-                com.dean.iso8583.core.utils.IsoMessageSanitizer.sanitizePayloadForLogging(rawMessage, hasHeader));
+        log.info("Received ISO 8583 message ({} bytes): {}", payload.length,
+                IsoMessageSanitizer.sanitizePayloadForLogging(rawMessage, hasHeader));
 
-        IsoMessage request = IsoUnpacker.unpack(rawMessage, hasHeader);
+        IsoMessage request  = IsoUnpacker.unpack(rawMessage, hasHeader);
         IsoMessage response = messageProcessor.process(request);
 
         long durationNanos = System.nanoTime() - startNanos;
@@ -187,16 +188,6 @@ public class IsoTcpServer implements SmartLifecycle {
         }
 
         sendResponse(response, output);
-    }
-
-    private String decodePayload(byte[] payload) {
-        return new String(payload, StandardCharsets.US_ASCII);
-    }
-
-    private IsoMessage unpackMessage(String rawMessage) {
-        boolean hasHeader = hasTPDUHeader(rawMessage);
-
-        return IsoUnpacker.unpack(rawMessage, hasHeader);
     }
 
     private void sendResponse(IsoMessage response, DataOutputStream output) throws IOException {
@@ -253,7 +244,7 @@ public class IsoTcpServer implements SmartLifecycle {
 
     @Override
     public void stop() {
-        running = false;
+        running.set(false);
 
         closeServerSocket();
         shutdownExecutor();
@@ -288,7 +279,7 @@ public class IsoTcpServer implements SmartLifecycle {
 
     @Override
     public boolean isRunning() {
-        return running;
+        return running.get();
     }
 
     @Override

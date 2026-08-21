@@ -26,15 +26,20 @@ import java.util.Arrays;
 @Slf4j
 public final class DukptEngine {
 
+    // ── Key Variant Masks (ANSI X9.24 Table A-1) ──────────────────────────────
     public static final byte[] PIN_KEY_VARIANT_MASK  = CryptoUtils.hexToBytes("00000000000000FF00000000000000FF");
     public static final byte[] MAC_KEY_VARIANT_MASK  = CryptoUtils.hexToBytes("000000000000FF00000000000000FF00");
     public static final byte[] DATA_KEY_VARIANT_MASK = CryptoUtils.hexToBytes("0000000000FF00000000000000FF0000");
 
-    private static final byte[] BDK_MASK     = CryptoUtils.hexToBytes("C0C0C0C000000000C0C0C0C000000000");
-    private static final byte[] KEY_GEN_MASK = CryptoUtils.hexToBytes("C0C0C0C000000000C0C0C0C000000000");
+    /**
+     * ANSI X9.24 derivation mask: XOR'd with the BDK to produce the right half of the IPEK,
+     * and re-applied during non-reversible key generation to produce the masked key.
+     * Both usages share this identical mask per the standard.
+     */
+    private static final byte[] DERIVATION_MASK = CryptoUtils.hexToBytes("C0C0C0C000000000C0C0C0C000000000");
 
     private DukptEngine() {
-        // Utility class
+        // Utility class — not instantiable
     }
 
     /**
@@ -55,12 +60,12 @@ public final class DukptEngine {
         // Left half: 3DES encrypt with BDK
         byte[] ipekLeft = CryptoUtils.desEncryptEcb(ksn8, bdk);
 
-        // Right half: 3DES encrypt with (BDK XOR BDK_MASK)
-        byte[] bdkXor = CryptoUtils.xor(bdk, BDK_MASK);
+        // Right half: 3DES encrypt with (BDK XOR DERIVATION_MASK)
+        byte[] bdkXor   = CryptoUtils.xor(bdk, DERIVATION_MASK);
         byte[] ipekRight = CryptoUtils.desEncryptEcb(ksn8, bdkXor);
 
         byte[] ipek = new byte[16];
-        System.arraycopy(ipekLeft, 0, ipek, 0, 8);
+        System.arraycopy(ipekLeft,  0, ipek, 0, 8);
         System.arraycopy(ipekRight, 0, ipek, 8, 8);
         return ipek;
     }
@@ -86,8 +91,8 @@ public final class DukptEngine {
             if ((counter & bitMask) != 0) {
                 // Set active bit in currentKsn
                 currentKsn[7] |= (byte) ((bitMask >> 16) & 0x1F);
-                currentKsn[8] |= (byte) ((bitMask >> 8) & 0xFF);
-                currentKsn[9] |= (byte) (bitMask & 0xFF);
+                currentKsn[8] |= (byte) ((bitMask >> 8)  & 0xFF);
+                currentKsn[9] |= (byte)  (bitMask        & 0xFF);
 
                 currentKey = nonReversibleKeyGeneration(currentKey, currentKsn);
             }
@@ -104,30 +109,30 @@ public final class DukptEngine {
         byte[] ksn8 = new byte[8];
         System.arraycopy(ksn, 2, ksn8, 0, 8); // Last 8 bytes of 10-byte KSN
 
-        byte[] keyLeft = Arrays.copyOfRange(key, 0, 8);
+        byte[] keyLeft  = Arrays.copyOfRange(key, 0, 8);
         byte[] keyRight = Arrays.copyOfRange(key, 8, 16);
 
         // Step 1: msg = R_8 XOR K_R
-        byte[] msg1 = CryptoUtils.xor(ksn8, keyRight);
+        byte[] msg1  = CryptoUtils.xor(ksn8, keyRight);
         // Step 2: Single-DES encrypt msg with K_L
         byte[] temp1 = CryptoUtils.desEncryptEcb(msg1, keyLeft);
         // Step 3: new_right = temp1 XOR K_R
         byte[] newRight = CryptoUtils.xor(temp1, keyRight);
 
         // Step 4: Masked key
-        byte[] keyMasked = CryptoUtils.xor(key, KEY_GEN_MASK);
-        byte[] keyMaskedLeft = Arrays.copyOfRange(keyMasked, 0, 8);
+        byte[] keyMasked      = CryptoUtils.xor(key, DERIVATION_MASK);
+        byte[] keyMaskedLeft  = Arrays.copyOfRange(keyMasked, 0, 8);
         byte[] keyMaskedRight = Arrays.copyOfRange(keyMasked, 8, 16);
 
         // Step 5: msg2 = R_8 XOR K_masked_R
-        byte[] msg2 = CryptoUtils.xor(ksn8, keyMaskedRight);
+        byte[] msg2  = CryptoUtils.xor(ksn8, keyMaskedRight);
         // Step 6: Single-DES encrypt msg2 with K_masked_L
         byte[] temp2 = CryptoUtils.desEncryptEcb(msg2, keyMaskedLeft);
         // Step 7: new_left = temp2 XOR K_masked_R
         byte[] newLeft = CryptoUtils.xor(temp2, keyMaskedRight);
 
         byte[] nextKey = new byte[16];
-        System.arraycopy(newLeft, 0, nextKey, 0, 8);
+        System.arraycopy(newLeft,  0, nextKey, 0, 8);
         System.arraycopy(newRight, 0, nextKey, 8, 8);
         return nextKey;
     }
@@ -159,8 +164,8 @@ public final class DukptEngine {
     public static byte[] maskKsn(byte[] ksn) {
         byte[] masked = Arrays.copyOf(ksn, 10);
         masked[7] &= (byte) 0xE0; // Zero out low 5 bits
-        masked[8] = 0x00;
-        masked[9] = 0x00;
+        masked[8]  = 0x00;
+        masked[9]  = 0x00;
         return masked;
     }
 
@@ -205,12 +210,16 @@ public final class DukptEngine {
             String pan,
             PinBlockFormat format
     ) {
-        byte[] ipek = deriveIpek(bdk, ksn);
+        byte[] ipek   = deriveIpek(bdk, ksn);
         byte[] txnKey = deriveTransactionKey(ipek, ksn);
         byte[] pinKey = derivePinKey(txnKey);
 
         return IsoPinBlockEngine.decryptPin(encryptedPinBlockHex, pan, format, pinKey);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Validation helpers
+    // ─────────────────────────────────────────────────────────────────────────
 
     private static void validateBdk(byte[] bdk) {
         if (bdk == null || (bdk.length != 16 && bdk.length != 24)) {
