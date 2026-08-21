@@ -1,0 +1,50 @@
+# fly.toml app configuration file for ISO 8583 Payment Engine
+# Reference: https://fly.io/docs/reference/configuration/
+
+app = "iso8583-payment-engine"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  JAVA_OPTS = "-XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+
+# 1. HTTP Service: Web Dashboard, REST API & Prometheus (Port 8080)
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/actuator/health"
+
+# 2. Raw TCP Service: ISO 8583 Binary Socket Host Simulator (Port 8583)
+[[services]]
+  protocol = "tcp"
+  internal_port = 8583
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[services.ports]]
+    port = 8583
+
+# Hardware VM Sizing for Spring Boot & Java 26
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
