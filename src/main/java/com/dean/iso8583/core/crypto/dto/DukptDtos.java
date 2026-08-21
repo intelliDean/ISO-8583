@@ -48,6 +48,27 @@ public final class DukptDtos {
     ) {}
 
     @Builder
+    public record EncryptDukptPinRequest(
+            String bdkHex,
+            String ksnHex,
+            String pin,
+            String pan,
+            String format
+    ) {}
+
+    @Builder
+    public record EncryptDukptPinResponse(
+            String encryptedPinBlockHex,
+            String clearPinBlockHex,
+            String pinKeyHex,
+            String ksnHex,
+            long transactionCounter,
+            String format,
+            boolean success,
+            String message
+    ) {}
+
+    @Builder
     public record DecryptDukptPinRequest(
             String bdkHex,
             String ksnHex,

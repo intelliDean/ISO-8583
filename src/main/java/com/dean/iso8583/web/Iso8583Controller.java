@@ -193,6 +193,18 @@ public class Iso8583Controller {
     }
 
     /**
+     * POST /api/iso/crypto/dukpt/encrypt-pin
+     *
+     * <p>Encrypts a PIN block using the terminal's derived DUKPT PEK key.</p>
+     */
+    @PostMapping("/crypto/dukpt/encrypt-pin")
+    public ResponseEntity<DukptDtos.EncryptDukptPinResponse> encryptDukptPin(
+            @RequestBody DukptDtos.EncryptDukptPinRequest request
+    ) {
+        return ResponseEntity.ok(iso8583Service.encryptDukptPin(request));
+    }
+
+    /**
      * POST /api/iso/crypto/dukpt/decrypt-pin
      *
      * <p>Decrypts an ANSI X9.24 DUKPT-encrypted PIN block using BDK and KSN.</p>

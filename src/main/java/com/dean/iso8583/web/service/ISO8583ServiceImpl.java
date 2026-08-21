@@ -315,6 +315,38 @@ public class ISO8583ServiceImpl implements ISO8583Service {
     }
 
     @Override
+    public DukptDtos.EncryptDukptPinResponse encryptDukptPin(DukptDtos.EncryptDukptPinRequest request) {
+        byte[] bdk    = resolveKey(request.bdkHex(), null, "DEFAULT_BDK");
+        byte[] ksn    = CryptoUtils.hexToBytes(request.ksnHex());
+        PinBlockFormat format = (request.format() != null && !request.format().isBlank())
+                ? PinBlockFormat.valueOf(request.format().toUpperCase())
+                : PinBlockFormat.FORMAT_0;
+
+        byte[] ipek       = DukptEngine.deriveIpek(bdk, ksn);
+        byte[] txnKey     = DukptEngine.deriveTransactionKey(ipek, ksn);
+        byte[] pinKey     = DukptEngine.derivePinKey(txnKey);
+
+        String clearPin = (request.pin() != null && !request.pin().isBlank()) ? request.pin().trim() : "1234";
+        String pan = (request.pan() != null && !request.pan().isBlank()) ? request.pan().trim() : "4532015588991234";
+
+        String encryptedBlock = IsoPinBlockEngine.encryptPin(clearPin, pan, format, pinKey);
+        String clearBlockHex = IsoPinBlockEngine.encodeClearPinBlock(clearPin, pan, format);
+
+        isoMetrics.recordCryptoOperation("DUKPT_PIN_ENCRYPT", format.name(), true);
+
+        return new DukptDtos.EncryptDukptPinResponse(
+                encryptedBlock.toUpperCase(),
+                clearBlockHex.toUpperCase(),
+                CryptoUtils.bytesToHex(pinKey),
+                request.ksnHex().toUpperCase(),
+                DukptEngine.extractTransactionCounter(ksn),
+                format.name(),
+                true,
+                "DUKPT PIN block encrypted with terminal derived PEK"
+        );
+    }
+
+    @Override
     public DukptDtos.DecryptDukptPinResponse decryptDukptPin(DukptDtos.DecryptDukptPinRequest request) {
         byte[] bdk    = resolveKey(request.bdkHex(), null, "DEFAULT_BDK");
         byte[] ksn    = CryptoUtils.hexToBytes(request.ksnHex());
@@ -329,9 +361,23 @@ public class ISO8583ServiceImpl implements ISO8583Service {
         byte[] cipherBytes = CryptoUtils.hexToBytes(request.encryptedPinBlockHex());
         byte[] clearBytes  = CryptoUtils.desDecryptEcb(cipherBytes, pinKey);
         String clearHex    = CryptoUtils.bytesToHex(clearBytes);
-        String clearPin    = IsoPinBlockEngine.decodeClearPinBlock(clearHex, request.pan(), format);
+        String clearPin;
+        boolean success = true;
+        String message = "DUKPT PIN block successfully decrypted via PEK variant";
 
-        isoMetrics.recordCryptoOperation("DUKPT_PIN_DECRYPT", format.name(), true);
+        try {
+            clearPin = IsoPinBlockEngine.decodeClearPinBlock(clearHex, request.pan(), format);
+            if (clearPin == null) {
+                success = false;
+                message = "Decrypted bytes do not conform to " + format.name() + " format. Ensure this block was encrypted with the matching PEK key.";
+            }
+        } catch (Exception e) {
+            clearPin = null;
+            success = false;
+            message = "PIN decoding failed: " + e.getMessage();
+        }
+
+        isoMetrics.recordCryptoOperation("DUKPT_PIN_DECRYPT", format.name(), success);
 
         return new DukptDtos.DecryptDukptPinResponse(
                 clearPin,
@@ -341,8 +387,8 @@ public class ISO8583ServiceImpl implements ISO8583Service {
                 request.ksnHex().toUpperCase(),
                 DukptEngine.extractTransactionCounter(ksn),
                 format.name(),
-                true,
-                "DUKPT PIN block successfully decrypted via PEK variant"
+                success,
+                message
         );
     }
 

@@ -115,6 +115,11 @@ public interface ISO8583Service {
     DukptDtos.DeriveKeyResponse deriveDukptKey(DukptDtos.DeriveKeyRequest request);
 
     /**
+     * Encrypts a PIN block using the terminal's derived DUKPT PEK key.
+     */
+    DukptDtos.EncryptDukptPinResponse encryptDukptPin(DukptDtos.EncryptDukptPinRequest request);
+
+    /**
      * Decrypts a DUKPT-encrypted PIN block using BDK and KSN.
      */
     DukptDtos.DecryptDukptPinResponse decryptDukptPin(DukptDtos.DecryptDukptPinRequest request);

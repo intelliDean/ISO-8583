@@ -1447,15 +1447,19 @@
             <div id="dukptDeriveResult" class="crypto-result" style="display:none; margin-bottom:1.5rem;"></div>
 
             <div style="border-top:1px solid rgba(255,255,255,0.08); padding-top:1rem;">
-                <h4 style="font-size:0.95rem; margin-bottom:0.75rem; color:#e2e8f0;">Terminal DUKPT PIN Block Decryption</h4>
-                <div class="form-row-3">
+                <h4 style="font-size:0.95rem; margin-bottom:0.75rem; color:#e2e8f0;">Terminal DUKPT PIN Block Encryption &amp; Decryption</h4>
+                <div class="form-row" style="grid-template-columns: 1fr 1.5fr 1.5fr 1fr;">
                     <div class="form-group">
-                        <label for="dukptEncPin">Encrypted PIN Block (DE 52):</label>
-                        <input type="text" id="dukptEncPin" placeholder="e.g. 8B304F2DDD3476AD" style="font-family:'Fira Code',monospace;">
+                        <label for="dukptClearPin">Clear PIN:</label>
+                        <input type="password" id="dukptClearPin" value="1234" maxlength="12" placeholder="1234">
                     </div>
                     <div class="form-group">
                         <label for="dukptPan">Card PAN:</label>
                         <input type="text" id="dukptPan" value="4532015588991234">
+                    </div>
+                    <div class="form-group">
+                        <label for="dukptEncPin">Encrypted PIN Block (DE 52):</label>
+                        <input type="text" id="dukptEncPin" placeholder="Click Encrypt or paste hex" style="font-family:'Fira Code',monospace;">
                     </div>
                     <div class="form-group">
                         <label for="dukptPinFormat">Format:</label>
@@ -1466,7 +1470,10 @@
                         </select>
                     </div>
                 </div>
-                <button class="btn btn-secondary" onclick="decryptDukptPin()">🔓 Decrypt DUKPT PIN</button>
+                <div style="display:flex; gap:0.75rem; margin-top:0.75rem; flex-wrap:wrap;">
+                    <button class="btn btn-primary" onclick="encryptDukptPin()">🔒 Encrypt with Terminal PEK</button>
+                    <button class="btn btn-secondary" onclick="decryptDukptPin()">🔓 Decrypt DUKPT PIN</button>
+                </div>
                 <div id="dukptDecryptResult" class="crypto-result" style="display:none; margin-top:0.75rem;"></div>
             </div>
         </div>
@@ -2415,15 +2422,60 @@ async function deriveDukptKeys() {
     }
 }
 
-async function decryptDukptPin() {
+async function encryptDukptPin() {
     const bdk = document.getElementById('dukptBdk').value.trim();
     const ksn = document.getElementById('dukptKsn').value.trim();
-    const encPin = document.getElementById('dukptEncPin').value.trim();
+    const pin = document.getElementById('dukptClearPin').value.trim();
     const pan = document.getElementById('dukptPan').value.trim();
     const format = document.getElementById('dukptPinFormat').value;
 
     const el = document.getElementById('dukptDecryptResult');
     el.style.display = 'block';
+    el.innerHTML = '<div class="spinner"></div> Encrypting with Terminal PEK...';
+    try {
+        const res = await fetch(API + '/api/iso/crypto/dukpt/encrypt-pin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                bdkHex: bdk,
+                ksnHex: ksn,
+                pin: pin,
+                pan: pan,
+                format: format
+            })
+        });
+        const data = await res.json();
+        document.getElementById('dukptEncPin').value = data.encryptedPinBlockHex;
+        el.innerHTML = `
+            <div style="background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.3); border-radius:6px; padding:0.75rem; margin-bottom:0.5rem;">
+                <div class="result-label" style="color:#60a5fa;">Encrypted PIN Block (DE 52)</div>
+                <div class="result-val" style="font-size:1.1rem; color:#60a5fa; letter-spacing:0.1em;">${escHtml(data.encryptedPinBlockHex || '—')}</div>
+            </div>
+            <div class="result-label">Clear PIN Block</div>
+            <div class="result-val">${escHtml(data.clearPinBlockHex || '—')}</div>
+            <div class="result-label" style="margin-top:0.4rem">Terminal PEK Used</div>
+            <div class="result-val" style="font-size:0.8rem; color:#a78bfa;">${escHtml(data.pinKeyHex || '—')}</div>`;
+        showToast('PIN block encrypted with Terminal PEK', 'success');
+    } catch (e) {
+        el.innerHTML = `<span class="result-fail">Error: ${e.message}</span>`;
+    }
+}
+
+async function decryptDukptPin() {
+    const bdk = document.getElementById('dukptBdk').value.trim();
+    const ksn = document.getElementById('dukptKsn').value.trim();
+    let encPin = document.getElementById('dukptEncPin').value.trim();
+    const pan = document.getElementById('dukptPan').value.trim();
+    const format = document.getElementById('dukptPinFormat').value;
+
+    const el = document.getElementById('dukptDecryptResult');
+    el.style.display = 'block';
+
+    if (!encPin) {
+        await encryptDukptPin();
+        encPin = document.getElementById('dukptEncPin').value.trim();
+    }
+
     el.innerHTML = '<div class="spinner"></div> Decrypting DUKPT PIN...';
     try {
         const res = await fetch(API + '/api/iso/crypto/dukpt/decrypt-pin', {
@@ -2438,15 +2490,27 @@ async function decryptDukptPin() {
             })
         });
         const data = await res.json();
-        el.innerHTML = `
-            <div style="background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:6px; padding:0.75rem; margin-bottom:0.5rem;">
-                <div class="result-label" style="color:#4ade80;">Decrypted Clear PIN</div>
-                <div class="result-val" style="font-size:1.4rem; color:#4ade80; letter-spacing:0.2em;">🔑 ${escHtml(data.clearPin || '—')}</div>
-            </div>
-            <div class="result-label">Clear PIN Block</div>
-            <div class="result-val">${escHtml(data.clearPinBlockHex || '—')}</div>
-            <div class="result-label" style="margin-top:0.4rem">Terminal PEK Used</div>
-            <div class="result-val" style="font-size:0.8rem; color:#a78bfa;">${escHtml(data.pinKeyHex || '—')}</div>`;
+        if (data.success && data.clearPin) {
+            el.innerHTML = `
+                <div style="background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:6px; padding:0.75rem; margin-bottom:0.5rem;">
+                    <div class="result-label" style="color:#4ade80;">Decrypted Clear PIN</div>
+                    <div class="result-val" style="font-size:1.4rem; color:#4ade80; letter-spacing:0.2em;">🔑 ${escHtml(data.clearPin)}</div>
+                </div>
+                <div class="result-label">Clear PIN Block</div>
+                <div class="result-val">${escHtml(data.clearPinBlockHex || '—')}</div>
+                <div class="result-label" style="margin-top:0.4rem">Terminal PEK Used</div>
+                <div class="result-val" style="font-size:0.8rem; color:#a78bfa;">${escHtml(data.pinKeyHex || '—')}</div>`;
+        } else {
+            el.innerHTML = `
+                <div style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:6px; padding:0.75rem; margin-bottom:0.5rem;">
+                    <div class="result-label" style="color:#f87171;">Decryption Status</div>
+                    <div style="color:#f87171; font-size:0.85rem; margin-top:0.3rem;">⚠️ ${escHtml(data.message || 'Decryption failed: PIN block does not match derived PEK')}</div>
+                </div>
+                <div class="result-label">Decrypted Raw Bytes (Hex)</div>
+                <div class="result-val">${escHtml(data.clearPinBlockHex || '—')}</div>
+                <div class="result-label" style="margin-top:0.4rem">Terminal PEK Used</div>
+                <div class="result-val" style="font-size:0.8rem; color:#a78bfa;">${escHtml(data.pinKeyHex || '—')}</div>`;
+        }
     } catch (e) {
         el.innerHTML = `<span class="result-fail">Error: ${e.message}</span>`;
     }
