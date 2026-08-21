@@ -1979,6 +1979,9 @@ async function generatePackedMessage() {
                 (data.secondaryBitmapHex ? ' | Secondary Bitmap: ' + data.secondaryBitmapHex : '') +
                 ' | Length: ' + (data.length || raw.length) + ' chars';
         }
+        if (data.primaryBitmapHex) {
+            renderBitmapFromHex(data.primaryBitmapHex, data.secondaryBitmapHex);
+        }
         return raw;
     } catch (e) {
         showToast('Pack failed: ' + e.message, 'error');
