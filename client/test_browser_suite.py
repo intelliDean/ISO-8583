@@ -234,14 +234,21 @@ def tab5_crypto_lab(client: ApiClient, raw_payload: str) -> None:
     assert _field(dukpt_res, "ipekHex", "Tab5"), "Should derive IPEK"
     assert _field(dukpt_res, "transactionKeyHex", "Tab5"), "Should derive Transaction Key"
 
-    # Terminal encrypts with derived PEK, switch decrypts with BDK + KSN
-    pin_enc = client.post("/api/iso/crypto/pin/encode", {
-        "pin": "5678", "pan": "4532015588991234", "format": "FORMAT_0", "keyHex": pek_hex
+    # Terminal encrypts with derived PEK via dedicated DUKPT encrypt endpoint
+    dukpt_enc = client.post("/api/iso/crypto/dukpt/encrypt-pin", {
+        "bdkHex": "0123456789ABCDEFFEDCBA9876543210",
+        "ksnHex": "FFFF9876543210E00001",
+        "pin": "5678",
+        "pan": "4532015588991234",
+        "format": "FORMAT_0"
     })
+    print(f"  ✓ DUKPT PIN Encryption: EncryptedBlock={dukpt_enc.get('encryptedPinBlockHex')} (Success: {dukpt_enc.get('success')})")
+    assert _field(dukpt_enc, "encryptedPinBlockHex", "Tab5"), "Should return encrypted PIN block"
+
     dukpt_dec = client.post("/api/iso/crypto/dukpt/decrypt-pin", {
         "bdkHex": "0123456789ABCDEFFEDCBA9876543210",
         "ksnHex": "FFFF9876543210E00001",
-        "encryptedPinBlockHex": pin_enc.get("encryptedBlockHex"),
+        "encryptedPinBlockHex": dukpt_enc.get("encryptedPinBlockHex"),
         "pan": "4532015588991234",
         "format": "FORMAT_0"
     })

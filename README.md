@@ -231,6 +231,7 @@ docker compose up -d
 | `POST` | `/api/iso/crypto/mac/verify` | Verifies message integrity against an expected DE 64 MAC |
 | `POST` | `/api/iso/crypto/dukpt/derive-ipek` | Derives the Initial PIN Encryption Key (IPEK) from BDK and KSN |
 | `POST` | `/api/iso/crypto/dukpt/derive-key` | Derives current Transaction Key, PEK, MAK, and DEK variants |
+| `POST` | `/api/iso/crypto/dukpt/encrypt-pin` | Encrypts a PIN block using the terminal's derived DUKPT PEK key |
 | `POST` | `/api/iso/crypto/dukpt/decrypt-pin` | Decrypts a DUKPT-encrypted PIN block using BDK and KSN |
 | `POST` | `/api/iso/clearing/batch/generate` | Generates a 1240 First Presentment batch with 1644 control totals and fee calculations |
 | `POST` | `/api/iso/clearing/batch/parse` | Parses a raw clearing batch file string into structured records |
